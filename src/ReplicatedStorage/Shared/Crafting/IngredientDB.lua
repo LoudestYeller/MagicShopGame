@@ -1,0 +1,26 @@
+return {
+  ember_shard    = { name="Ember Shard",      tags={"fire","mineral","catalyst"}, rarity=2 },
+  beast_fat      = { name="Beast Fat",        tags={"organic","oil"},             rarity=1 },
+  glowing_mush   = { name="Glowing Mushroom", tags={"life","fungus","lumens"},    rarity=1 },
+  shadow_moss    = { name="Shadow Moss",      tags={"shadow","plant"},            rarity=1 },
+  frostleaf      = { name="Frostleaf",        tags={"frost","plant"},             rarity=1 },
+  crystal_flower = { name="Crystal Flower",   tags={"frost","life","mineral"},    rarity=2 },
+  sunpetal       = { name="Sunpetal",         tags={"light","plant"},             rarity=1 },
+  iron_dust      = { name="Iron Dust",        tags={"metal","mineral"},           rarity=1 },
+  echo_silk      = { name="Echo Silk",        tags={"air","fabric"},              rarity=2 },
+  void_ichor     = { name="Void Ichor",       tags={"void","toxin","catalyst"},   rarity=3 },
+  sky_salt       = { name="Sky Salt",         tags={"air","salt","catalyst"},     rarity=1 },
+  heartwood_sap  = { name="Heartwood Sap",    tags={"life","resin","earth"},      rarity=2 },
+  lucky_clover   = { name="Lucky Clover",     tags={"luck","plant"},              rarity=2 },
+  nightshade     = { name="Nightshade",       tags={"toxin","plant","shadow"},    rarity=2 },
+  storm_thistle  = { name="Storm Thistle",    tags={"air","plant"},               rarity=2 },
+  brimstone_powder={name="Brimstone Powder",  tags={"fire","mineral"},            rarity=2 },
+  aether_quartz  = { name="Aether Quartz",    tags={"air","light","mineral"},     rarity=3 },
+  ghost_orchid   = { name="Ghost Orchid",     tags={"life","shadow","plant"},     rarity=3 },
+  
+  -- Additional mappings for existing gathered items in the game
+  ["Glowing Mushroom"] = { name="Glowing Mushroom", tags={"life","fungus","lumens"}, rarity=1 },
+  ["Shadow Moss"]      = { name="Shadow Moss",      tags={"shadow","plant"},         rarity=1 },
+  ["Frostleaf"]        = { name="Frostleaf",        tags={"frost","plant"},          rarity=1 },
+  ["Crystal Flower"]   = { name="Crystal Flower",   tags={"frost","life","mineral"}, rarity=2 },
+}

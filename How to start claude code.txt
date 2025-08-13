@@ -1,0 +1,36 @@
+How to start claude code 
+
+● After your restart, here's how to get back to Claude Code:
+
+cd C:\Users\David\OneDrive\Documents\MagicShop\MagicShopGame
+
+
+& "$env:APPDATA\npm\claude.cmd" code
+& "$env:APPDATA\npm\claude.cmd" doctor
+
+  1. Restart Rojo first:
+
+  cd "C:\Users\David\OneDrive\Documents\MagicShop\MagicShopGame"
+  C:\Tools\Rojo\rojo.exe serve --port 34872
+
+  2. Reopen Claude Code:
+
+  - If you have the Claude Code desktop app: Just click on it or find it in your Start menu
+  - If you're using the web version: Go to https://claude.ai/code in your browser
+
+  3. Navigate back to your project:
+
+  Once Claude Code opens, you'll need to navigate back to your project directory:
+  C:\Users\David\OneDrive\Documents\Magic Shop\MagicShopGame
+
+  4. Reconnect Rojo in Studio:
+
+  - Open Roblox Studio
+  - Open your place
+  - Go to Plugins tab → Rojo → Connect
+
+  5. Test the system:
+
+  After everything reconnects, you should see clean logs without the DataService:224 and CraftingUIController:175 errors!
+
+  The restart should clear all the cached script issues and let Studio run the updated, fixed versions of your files. 🎯

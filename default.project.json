@@ -1,0 +1,28 @@
+{
+  "name": "MagicShop",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Shared": { "$path": "src/ReplicatedStorage/Shared" },
+      "Networking": { "$path": "src/ReplicatedStorage/Networking" }
+    },
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "ServerMain": { "$path": "src/ServerScriptService/ServerMain.server.lua" },
+      "ServiceLoader": { "$path": "src/ServerScriptService/ServiceLoader.lua" },
+      "Health": { "$path": "src/ServerScriptService/Health.server.lua" },
+      "Cleanup": { "$path": "src/ServerScriptService/Cleanup.server.lua" },
+      "Services": { "$path": "src/ServerScriptService/Services" },
+      "Templates": { "$path": "src/ServerScriptService/Templates" },
+      "Tools": { "$path": "src/ServerScriptService/Tools" }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "$path": "src/StarterPlayer/StarterPlayerScripts"
+      }
+    }
+  }
+}

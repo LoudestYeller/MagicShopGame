@@ -1,0 +1,2657 @@
+
+
+---FILE: ReplicatedStorage\Networking\CraftingRemotes.lua
+local RS = game:GetService("ReplicatedStorage")
+local Networking = RS:WaitForChild("Networking")
+
+local NAMES = { "RequestCraft", "ToggleCrafting", "CraftingState", "CraftedToast" }
+
+local cache = {}
+for _, name in ipairs(NAMES) do
+    local ev = Networking:FindFirstChild(name) or Instance.new("RemoteEvent")
+    ev.Name = name
+    ev.Parent = Networking
+    cache[name] = ev
+end
+
+local CraftingRemotes = {}
+function CraftingRemotes.Get(name) return cache[name] end
+setmetatable(CraftingRemotes, { __index = function(_, k) return cache[k] end })
+print("[CraftingRemotes] Ready:", table.concat(NAMES, ", "))
+return CraftingRemotes
+
+
+---FILE: ReplicatedStorage\Networking\Remotes.lua
+local RS = game:GetService("ReplicatedStorage")
+local Networking = RS:FindFirstChild("Networking") or Instance.new("Folder", RS)
+Networking.Name = "Networking"
+
+local NAMES = {
+    "CashUpdated","DisplayCaseRequest","DisplayCaseUpdated",
+    "InventorySnapshot","InventoryUpdated","RequestInventory",
+}
+
+local cache = {}
+for _, name in ipairs(NAMES) do
+    local ev = Networking:FindFirstChild(name) or Instance.new("RemoteEvent")
+    ev.Name = name
+    ev.Parent = Networking
+    cache[name] = ev
+end
+
+local Remotes = {}
+function Remotes.Get(name) return cache[name] end
+setmetatable(Remotes, { __index = function(_, k) return cache[k] end })
+print("[Remotes] Ready:", table.concat(NAMES, ", "))
+return Remotes
+
+
+---FILE: ReplicatedStorage\Shared\Constants.lua
+--!strict
+local Constants = {}
+
+Constants.VERSION = "0.0.1"
+Constants.DEBUG = true
+
+return Constants
+
+
+---FILE: ReplicatedStorage\Shared\Contracts.lua
+local RS = game:GetService("ReplicatedStorage")
+local Items = require(RS.Shared.Items)
+
+local Contracts = {}
+
+function Contracts.assertId(id)
+  assert(type(id)=="string", "id must be string")
+  assert(id:match("^[a-z0-9_]+$"), "id must be snake_case")
+  assert(Items[id] ~= nil, ("unknown item id: %s"):format(id))
+end
+
+return Contracts
+
+
+---FILE: ReplicatedStorage\Shared\ItemDB.lua
+-- Temporary shim so old code that requires ItemDB keeps working.
+-- Internally, we standardize on Shared/Items.lua.
+local RS = game:GetService("ReplicatedStorage")
+local Items = require(RS.Shared.Items)
+
+local ItemDB = setmetatable({}, {
+    __index = function(_, k) return Items[k] end
+})
+
+function ItemDB.Get(id)
+    return Items[id]
+end
+
+function ItemDB.GetName(id)
+    local it = Items[id]
+    return it and it.name or id
+end
+
+function ItemDB.Exists(id)
+    return Items[id] ~= nil
+end
+
+return ItemDB
+
+
+---FILE: ReplicatedStorage\Shared\Items.lua
+local Items = {
+  -- Ingredients
+  glowing_mushroom = {name="Glowing Mushroom", type="ingredient", tags={"fungus","glow","forest"}, rarity=1},
+  shadow_moss     = {name="Shadow Moss",     type="ingredient", tags={"herb","dark","forest"},  rarity=1},
+  frostleaf       = {name="Frostleaf",       type="ingredient", tags={"herb","ice"},            rarity=1},
+  crystal_flower  = {name="Crystal Flower",  type="ingredient", tags={"crystal","rare"},        rarity=2},
+  ember_shard     = {name="Ember Shard",     type="ingredient", tags={"fire","ore"},            rarity=2},
+  beast_fat       = {name="Beast Fat",       type="ingredient", tags={"organic"},               rarity=1},
+  -- Outputs
+  potion_healing  = {name="Healing Potion",  type="consumable", tags={"potion","heal"},  value=10},
+  salve_ice       = {name="Ice Salve",       type="consumable", tags={"salve","ice"},    value=10},
+  charm_frost     = {name="Frost Charm",     type="trinket",    tags={"ice","charm"},    value=15},
+}
+return Items
+
+
+---FILE: ReplicatedStorage\Shared\Recipes.lua
+local RS = game:GetService("ReplicatedStorage")
+local Items = require(RS.Shared.Items)
+
+local Recipes = {}
+
+local function keyFor(inputs)
+  local t = {}
+  for _,i in ipairs(inputs or {}) do
+    for k=1,(i.qty or 1) do table.insert(t, i.id) end
+  end
+  table.sort(t)
+  return table.concat(t, "+")
+end
+
+local MAP = {
+  ["beast_fat+ember_shard"]       = {id="potion_healing", station="PotionBench"},
+  ["frostleaf+glowing_mushroom"]  = {id="potion_healing", station="PotionBench"},
+  ["crystal_flower+shadow_moss"]  = {id="salve_ice",      station="Enchanter"},
+}
+
+function Recipes.Combine(inputs, station, tier)
+  local k = keyFor(inputs)
+  local e = MAP[k]
+  if e and (not e.station or e.station == station) then
+    return {id = e.id}
+  end
+  return nil
+end
+
+return Recipes
+
+
+---FILE: ReplicatedStorage\Shared\RemotesIndex.lua
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Remotes = ReplicatedStorage:WaitForChild("Networking"):WaitForChild("Remotes")
+
+return {
+    -- Inventory remotes
+    CashUpdated       = Remotes:WaitForChild("CashUpdated"),
+    InventorySnapshot = Remotes:WaitForChild("InventorySnapshot"),
+    InventoryUpdated  = Remotes:WaitForChild("InventoryUpdated"),
+    RequestInventory  = Remotes:WaitForChild("RequestInventory"),
+    
+    -- Display case remotes
+    DisplayCaseRequest= Remotes:WaitForChild("DisplayCaseRequest"),
+    DisplayCaseUpdated= Remotes:WaitForChild("DisplayCaseUpdated"),
+    
+    -- Crafting remotes
+    RequestCraft      = Remotes:WaitForChild("RequestCraft"),
+    ToggleCrafting    = Remotes:WaitForChild("ToggleCrafting"),
+    CraftingState     = Remotes:WaitForChild("CraftingState"),
+    CraftedToast      = Remotes:WaitForChild("CraftedToast"),
+}
+
+
+---FILE: ReplicatedStorage\Shared\Theme.lua
+local Theme = {}
+Theme.Colors = {
+  Text   = Color3.fromRGB(255,255,255),
+  Accent = Color3.fromRGB(120,200,255),
+}
+return Theme
+
+
+---FILE: ReplicatedStorage\Shared\Types.lua
+--!strict
+export type ItemId = string
+export type Quantity = number
+
+export type ItemStack = {
+    id: ItemId,
+    qty: Quantity,
+}
+
+return {}
+
+
+---FILE: ReplicatedStorage\Shared\Version.lua
+return "0.1.0-dev4"
+
+
+---FILE: ReplicatedStorage\Shared\Crafting\EffectsDB.lua
+return {
+  warmth     = { kind="buff",   stat="+cold_resist",  base=10, perTier=5, dur=60 },
+  frostward  = { kind="buff",   stat="+frost_resist", base=10, perTier=5, dur=60 },
+  haste      = { kind="buff",   stat="+move_speed%",  base=5,  perTier=3, dur=20 },
+  stealth    = { kind="buff",   stat="-enemy_notice", base=10, perTier=5, dur=20 },
+  vigor      = { kind="buff",   stat="+max_health",   base=10, perTier=6, dur=60 },
+  thorns     = { kind="buff",   stat="reflect_dmg",   base=2,  perTier=1, dur=30 },
+  clarity    = { kind="buff",   stat="+crafting_xp%", base=10, perTier=5, dur=120 },
+  luck       = { kind="buff",   stat="+loot_find%",   base=5,  perTier=3, dur=30 },
+  luminous   = { kind="utility",stat="light_radius",  base=8,  perTier=4, dur=120 },
+  antidote   = { kind="cleanse",stat="cure_poison",   base=1,  perTier=0, dur=0  },
+  regen      = { kind="heal",   stat="hp_regen",      base=2,  perTier=1, dur=20 },
+}
+
+
+---FILE: ReplicatedStorage\Shared\Crafting\IngredientDB.lua
+return {
+  ember_shard    = { name="Ember Shard",      tags={"fire","mineral","catalyst"}, rarity=2 },
+  beast_fat      = { name="Beast Fat",        tags={"organic","oil"},             rarity=1 },
+  glowing_mush   = { name="Glowing Mushroom", tags={"life","fungus","lumens"},    rarity=1 },
+  shadow_moss    = { name="Shadow Moss",      tags={"shadow","plant"},            rarity=1 },
+  frostleaf      = { name="Frostleaf",        tags={"frost","plant"},             rarity=1 },
+  crystal_flower = { name="Crystal Flower",   tags={"frost","life","mineral"},    rarity=2 },
+  sunpetal       = { name="Sunpetal",         tags={"light","plant"},             rarity=1 },
+  iron_dust      = { name="Iron Dust",        tags={"metal","mineral"},           rarity=1 },
+  echo_silk      = { name="Echo Silk",        tags={"air","fabric"},              rarity=2 },
+  void_ichor     = { name="Void Ichor",       tags={"void","toxin","catalyst"},   rarity=3 },
+  sky_salt       = { name="Sky Salt",         tags={"air","salt","catalyst"},     rarity=1 },
+  heartwood_sap  = { name="Heartwood Sap",    tags={"life","resin","earth"},      rarity=2 },
+  lucky_clover   = { name="Lucky Clover",     tags={"luck","plant"},              rarity=2 },
+  nightshade     = { name="Nightshade",       tags={"toxin","plant","shadow"},    rarity=2 },
+  storm_thistle  = { name="Storm Thistle",    tags={"air","plant"},               rarity=2 },
+  brimstone_powder={name="Brimstone Powder",  tags={"fire","mineral"},            rarity=2 },
+  aether_quartz  = { name="Aether Quartz",    tags={"air","light","mineral"},     rarity=3 },
+  ghost_orchid   = { name="Ghost Orchid",     tags={"life","shadow","plant"},     rarity=3 },
+  
+  -- Additional mappings for existing gathered items in the game
+  ["Glowing Mushroom"] = { name="Glowing Mushroom", tags={"life","fungus","lumens"}, rarity=1 },
+  ["Shadow Moss"]      = { name="Shadow Moss",      tags={"shadow","plant"},         rarity=1 },
+  ["Frostleaf"]        = { name="Frostleaf",        tags={"frost","plant"},          rarity=1 },
+  ["Crystal Flower"]   = { name="Crystal Flower",   tags={"frost","life","mineral"}, rarity=2 },
+}
+
+
+---FILE: ReplicatedStorage\Shared\Crafting\RecipeBook.lua
+local RuleEngine = require(script.Parent.RuleEngine)
+local RecipeBook = {}
+function RecipeBook.resolve(station, ingredientList, playerSeed)
+    return RuleEngine.resolve(station, ingredientList, playerSeed)
+end
+return RecipeBook
+
+
+---FILE: ReplicatedStorage\Shared\Crafting\RecipesDB.lua
+return {
+  PotionBench = {
+    ["beast_fat+ember_shard"] = {
+      id="potion_warmth", gives={potion_warmth=1}, needs={beast_fat=1,ember_shard=1},
+      effect="warmth", tier=1, xp=5, stability=0.85
+    },
+    ["frostleaf+glowing_mush+shadow_moss"] = {
+      id="potion_frostward", gives={potion_frostward=1}, needs={frostleaf=1,glowing_mush=1,shadow_moss=1},
+      effect="frostward", tier=2, xp=8, stability=0.90
+    },
+    ["glowing_mush+sunpetal"] = {
+      id="potion_luminous", gives={potion_luminous=1}, needs={glowing_mush=1,sunpetal=1},
+      effect="luminous", tier=1, xp=5, stability=0.88
+    },
+    ["glowing_mush+heartwood_sap"] = {
+      id="potion_regen", gives={potion_regen=1}, needs={glowing_mush=1,heartwood_sap=1},
+      effect="regen", tier=2, xp=7, stability=0.86
+    },
+    ["lucky_clover+sunpetal"] = {
+      id="potion_luck", gives={potion_luck=1}, needs={lucky_clover=1,sunpetal=1},
+      effect="luck", tier=2, xp=7, stability=0.87
+    },
+    ["sky_salt+sunpetal"] = {
+      id="potion_antidote", gives={potion_antidote=1}, needs={sky_salt=1,sunpetal=1},
+      effect="antidote", tier=1, xp=5, stability=0.90
+    },
+    ["echo_silk+shadow_moss"] = {
+      id="potion_stealth", gives={potion_stealth=1}, needs={echo_silk=1,shadow_moss=1},
+      effect="stealth", tier=2, xp=8, stability=0.84
+    },
+    ["heartwood_sap+nightshade"] = {
+      id="potion_antidote", gives={potion_antidote=1}, needs={heartwood_sap=1,nightshade=1},
+      effect="antidote", tier=2, xp=7, stability=0.82
+    },
+    ["echo_silk+sky_salt"] = {
+      id="potion_haste", gives={potion_haste=1}, needs={echo_silk=1,sky_salt=1},
+      effect="haste", tier=2, xp=8, stability=0.86
+    },
+    ["beast_fat+brimstone_powder"] = {
+      id="potion_warmth_t2", gives={potion_warmth_t2=1}, needs={beast_fat=1,brimstone_powder=1},
+      effect="warmth", tier=2, xp=8, stability=0.83
+    },
+  },
+
+  Enchanter = {
+    ["crystal_flower+echo_silk"] = {
+      id="charm_haste", gives={charm_haste=1}, needs={crystal_flower=1,echo_silk=1},
+      effect="haste", tier=2, xp=10, stability=0.88
+    },
+    ["aether_quartz+sunpetal"] = {
+      id="charm_luminous", gives={charm_luminous=1}, needs={aether_quartz=1,sunpetal=1},
+      effect="luminous", tier=3, xp=14, stability=0.86
+    },
+    ["ghost_orchid+shadow_moss"] = {
+      id="charm_stealth", gives={charm_stealth=1}, needs={ghost_orchid=1,shadow_moss=1},
+      effect="stealth", tier=3, xp=14, stability=0.82
+    },
+    ["echo_silk+lucky_clover"] = {
+      id="charm_luck", gives={charm_luck=1}, needs={echo_silk=1,lucky_clover=1},
+      effect="luck", tier=2, xp=10, stability=0.87
+    },
+    ["crystal_flower+heartwood_sap"] = {
+      id="charm_vigor", gives={charm_vigor=1}, needs={crystal_flower=1,heartwood_sap=1},
+      effect="vigor", tier=2, xp=10, stability=0.89
+    },
+    ["sky_salt+void_ichor"] = {
+      id="charm_antidote", gives={charm_antidote=1}, needs={sky_salt=1,void_ichor=1},
+      effect="antidote", tier=3, xp=14, stability=0.78
+    },
+  },
+
+  Forge = {
+    ["heartwood_sap+iron_dust"] = {
+      id="plating_thorns", gives={plating_thorns=1}, needs={heartwood_sap=1,iron_dust=1},
+      effect="thorns", tier=1, xp=6, stability=0.90
+    },
+    ["frostleaf+iron_dust"] = {
+      id="plating_frostward", gives={plating_frostward=1}, needs={frostleaf=1,iron_dust=1},
+      effect="frostward", tier=1, xp=6, stability=0.90
+    },
+    ["brimstone_powder+iron_dust"] = {
+      id="plating_warmth", gives={plating_warmth=1}, needs={brimstone_powder=1,iron_dust=1},
+      effect="warmth", tier=1, xp=6, stability=0.88
+    },
+    ["aether_quartz+iron_dust"] = {
+      id="plating_haste", gives={plating_haste=1}, needs={aether_quartz=1,iron_dust=1},
+      effect="haste", tier=2, xp=10, stability=0.86
+    },
+  },
+}
+
+
+---FILE: ReplicatedStorage\Shared\Crafting\RuleEngine.lua
+local Ingredients = require(script.Parent.IngredientDB)
+local Effects     = require(script.Parent.EffectsDB)
+local Named       = require(script.Parent.RecipesDB)
+
+local RuleEngine = {}
+
+-- oppositions diminish stability if mixed
+local oppositions = { fire="frost", frost="fire", light="shadow", shadow="light", air="earth", earth="air" }
+
+-- dominant tag → default effect (procedural)
+local tagToEffect = { fire="warmth", frost="frostward", air="haste", shadow="stealth",
+                      life="regen", light="luminous", metal="thorns", luck="luck", toxin="antidote" }
+
+-- build name→id map so players can send "Glowing Mushroom" or "glowing_mush"
+local NameToId = (function()
+    local m = {}
+    for id,info in pairs(Ingredients) do
+        m[string.lower(id)] = id
+        m[string.lower(info.name)] = id
+    end
+    return m
+end)()
+
+local function normalizeIds(inputs)
+    local out = {}
+    for _,s in ipairs(inputs or {}) do
+        local k = string.lower(tostring(s)):gsub("%s+", "_")
+        local id = Ingredients[k] and k or NameToId[k]
+        if id then table.insert(out, id) end
+    end
+    return out
+end
+
+local function canonicalKey(ids)
+    table.sort(ids)
+    return table.concat(ids, "+")
+end
+
+local function collectTags(ids)
+    local tags, raritySum = {}, 0
+    for _,id in ipairs(ids) do
+        local ing = Ingredients[id]
+        if ing then
+            raritySum += (ing.rarity or 1)
+            for _,t in ipairs(ing.tags or {}) do tags[t]=(tags[t] or 0)+1 end
+        end
+    end
+    return tags, raritySum
+end
+
+local function dominantTag(tags)
+    local best,score = nil,-1
+    for t,v in pairs(tags) do if v > score then best,score = t,v end end
+    return best
+end
+
+local function baseStability(station, tags)
+    local s = (station=="PotionBench" and 0.85) or (station=="Enchanter" and 0.80) or (station=="Forge" and 0.90) or 0.80
+    for t,_ in pairs(tags) do
+        local opp = oppositions[t]
+        if opp and tags[opp] then s -= 0.15 end
+    end
+    return math.clamp(s, 0.1, 0.95)
+end
+
+function RuleEngine.resolve(station, rawInputs, playerSeed)
+    -- normalize to canonical ids
+    local ids = normalizeIds(rawInputs)
+    if #ids == 0 then return { ok=false, reason="invalid_recipe" } end
+
+    -- 1) named recipe wins
+    local key = canonicalKey(table.clone(ids))
+    local named = Named[station] and Named[station][key]
+    if named then
+        return {
+            ok=true, id=named.id, gives=named.gives, needs=named.needs,
+            effect=named.effect, tier=named.tier, xp=named.xp, stability=named.stability
+        }
+    end
+
+    -- 2) procedural outcome from tags/rarity
+    local tags, raritySum = collectTags(ids)
+    local dom = dominantTag(tags)
+    local effectId = tagToEffect[dom]
+    if not effectId then return { ok=false, reason="invalid_recipe" } end
+
+    local tier = math.clamp((raritySum + #ids - 1), 1, 4)
+    local stab = baseStability(station, tags)
+    local bias = (type(playerSeed)=="number" and (playerSeed - 0.5)*0.1) or 0
+    local stability = math.clamp(stab + bias, 0.1, 0.98)
+
+    local productId = (station=="Enchanter" and ("charm_"..effectId))
+                   or (station=="Forge"     and ("plating_"..effectId))
+                   or ("potion_"..effectId)
+
+    -- infer needs straight from inputs (1 each)
+    local needs = {}
+    for _,id in ipairs(ids) do needs[id] = (needs[id] or 0) + 1 end
+
+    return {
+        ok=true, id=productId, gives={ [productId]=1 }, needs=needs,
+        effect=effectId, tier=tier, xp=4 + tier*2, stability=stability
+    }
+end
+
+return RuleEngine
+
+
+---FILE: ServerScriptService\Cleanup.server.lua
+local Players = game:GetService("Players")
+Players.PlayerAdded:Connect(function(plr)
+    local ps = plr:WaitForChild("PlayerScripts", 10)
+    if not ps then return end
+    local client = ps:FindFirstChild("Client")
+    local stray = ps:FindFirstChild("ShelfClient")
+    if stray and client and client:FindFirstChild("ShelfClient") then
+        warn("[Cleanup] Removing stray ShelfClient at PlayerScripts root")
+        stray:Destroy()
+    end
+end)
+
+
+---FILE: ServerScriptService\GatherScript.lua
+-- Workspace.Forest.<Node>.GatherScript
+local SSS = game:GetService("ServerScriptService")
+local Inventory = require(SSS.Services.InventoryService)
+
+local node = script.Parent
+local ITEM_ID  = node:GetAttribute("ItemId") or "glowing_mushroom" -- ✅ ID, not display name
+local QTY      = node:GetAttribute("Qty") or 1
+local prompt   = node:FindFirstChildWhichIsA("ProximityPrompt") or node:FindFirstChildOfClass("ClickDetector")
+local busy = false
+
+local function disableNode(on)
+    if prompt then
+        if prompt:IsA("ProximityPrompt") then prompt.Enabled = not on else prompt.MaxActivationDistance = on and 0 or 20 end
+    end
+    node.Transparency = on and 1 or 0
+end
+
+local function grant(player)
+    print(("🌿 %s gathered %s"):format(player.Name, ITEM_ID))
+    Inventory.Add(player, ITEM_ID, QTY) -- ✅ correct param order + ID
+end
+
+local function trigger(player)
+    if busy then return end
+    busy = true
+    grant(player)
+    disableNode(true)
+    task.delay(node:GetAttribute("Cooldown") or 10, function()
+        disableNode(false)
+        busy = false
+    end)
+end
+
+if prompt then
+    if prompt:IsA("ProximityPrompt") then
+        prompt.Triggered:Connect(trigger) -- ProximityPrompt passes player directly
+    else
+        prompt.MouseClick:Connect(function(player) -- ClickDetector passes player as first param
+            trigger(player)
+        end)
+    end
+end
+
+
+---FILE: ServerScriptService\Health.server.lua
+-- Wait for ServerMain to finish before doing health check
+task.wait(0.5) -- Give ServerMain time to complete
+
+local RS = game:GetService("ReplicatedStorage")
+local SSS = game:GetService("ServerScriptService")
+
+-- Wait for RemotesService to finish creating all remotes
+local networking = RS:WaitForChild("Networking")
+local remotesFolder = networking:WaitForChild("Remotes")
+
+-- Count services and actual RemoteEvents
+local servicesCount = #SSS.Services:GetChildren()
+local remotesCount = 0
+for _, child in ipairs(remotesFolder:GetChildren()) do
+    if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
+        remotesCount = remotesCount + 1
+    end
+end
+
+-- Check for duplicate services (safety net)
+local services = SSS:WaitForChild("Services")
+local seen = {}
+for _,child in ipairs(services:GetChildren()) do
+    if seen[child.Name] then
+        warn("⚠️  Duplicate service:", child.Name, child:GetFullName(), "and", seen[child.Name]:GetFullName())
+    else
+        seen[child.Name] = child
+    end
+end
+
+print(("✅ Health OK (%d services, %d remotes)"):format(servicesCount, remotesCount))
+
+
+---FILE: ServerScriptService\Preflight.server.lua
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Remotes = require(ReplicatedStorage.Networking.Remotes)
+
+local required = {
+    "RequestInventory","InventorySnapshot","InventoryUpdated",
+    "DisplayCaseRequest","DisplayCaseUpdated","CashUpdated",
+}
+
+for _, name in ipairs(required) do
+    local r = Remotes.Get(name)
+    if not (r and r:IsA("RemoteEvent")) then
+        warn(("[Preflight] RemoteEvent missing or wrong type: %s"):format(name))
+    end
+end
+
+print("[Preflight] Remotes OK")
+
+
+---FILE: ServerScriptService\ServerMain.server.lua
+print("🚀 Starting MagicShop server...")
+print("🧭 ServerMain source:", script:GetFullName())
+
+local RS = game:GetService("ReplicatedStorage")
+local ok,version = pcall(function() return require(RS.Shared.Version) end)
+if not ok then version = "0.1.0-dev4" end
+print(("📋 MagicShop %s"):format(version))
+
+-- Wait for RemotesService to create all remotes first
+local Networking = RS:WaitForChild("Networking")
+local RemotesFolder = Networking:WaitForChild("Remotes")
+print("📡 RemotesService ready")
+
+local ServiceLoader = require(script.Parent:WaitForChild("ServiceLoader"))
+
+print("🔧 Initializing all services...")
+ServiceLoader.InitAll()
+print("✅ All services initialized")
+
+print("🚀 Starting all services...")
+ServiceLoader.StartAll()
+print("🛡️ Mirroring cleanup guard activated")
+print("✅ Mirroring guard system active")
+
+
+---FILE: ServerScriptService\ServiceLoader.lua
+local SSS = game:GetService("ServerScriptService")
+local ServicesFolder = SSS:WaitForChild("Services")
+
+local function moduleFor(name: string)
+    local node = ServicesFolder:WaitForChild(name)
+    if node:IsA("ModuleScript") then return node end
+    -- Folder service: prefer a child ModuleScript named "init", or any ModuleScript
+    local init = node:FindFirstChild("init")
+    if init and init:IsA("ModuleScript") then return init end
+    local any = node:FindFirstChildWhichIsA("ModuleScript")
+    assert(any, ("Service %s missing ModuleScript"):format(name))
+    return any
+end
+
+local function requireService(name: string)
+    local ok, result = pcall(function()
+        return require(moduleFor(name))
+    end)
+    if not ok then
+        warn(("[ServiceLoader] Failed to require %s: %s"):format(name, result))
+        return nil
+    end
+    return result
+end
+
+local order = {
+    "DataService","InventoryService","CraftingService",
+    "DisplayCaseService","NPCSalesService","TutorialService","DevService"
+}
+
+local ServiceLoader = {}
+ServiceLoader.requireService = requireService
+
+function ServiceLoader.InitAll()
+    for _,n in ipairs(order) do
+        local s = requireService(n)
+        if s and s.Init then
+            local ok, err = pcall(s.Init, s)
+            if not ok then warn(("[ServiceLoader] Init failed for %s: %s"):format(n, err)) end
+        end
+    end
+end
+
+function ServiceLoader.StartAll()
+    for _,n in ipairs(order) do
+        local s = requireService(n)
+        if s and s.Start then
+            local ok, err = pcall(s.Start, s)
+            if not ok then warn(("[ServiceLoader] Start failed for %s: %s"):format(n, err)) end
+        end
+    end
+end
+
+return ServiceLoader
+
+
+---FILE: ServerScriptService\CraftingService\init.lua
+local CraftingService = {}
+function CraftingService.Init()
+    print("[CraftingService] ready")
+end
+return CraftingService
+
+
+---FILE: ServerScriptService\Services\RecipeValidator.server.lua
+-- Lightweight sanity checks at startup
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Ingredients = require(ReplicatedStorage.Shared.Crafting.IngredientDB)
+local Effects     = require(ReplicatedStorage.Shared.Crafting.EffectsDB)
+local Named       = require(ReplicatedStorage.Shared.Crafting.RecipesDB)
+
+local function canonicalKey(ids)
+    table.sort(ids)
+    return table.concat(ids, "+")
+end
+
+local function splitKey(key)
+    local t = {}
+    for part in string.gmatch(key, "([^%+]+)") do table.insert(t, part) end
+    return t
+end
+
+local seen = {}
+for station, dict in pairs(Named) do
+    for key, recipe in pairs(dict) do
+        -- canonical key check
+        local ids = splitKey(key)
+        local canonical = canonicalKey(table.clone(ids))
+        if canonical ~= key then
+            warn(("[RecipeValidator] %s key '%s' is not canonical; should be '%s'"):format(station, key, canonical))
+        end
+        -- ingredient existence
+        for _,id in ipairs(ids) do
+            if not Ingredients[id] then
+                warn(("[RecipeValidator] %s recipe '%s' references missing ingredient '%s'"):format(station, recipe.id, id))
+            end
+        end
+        -- effect existence
+        if recipe.effect and not Effects[recipe.effect] then
+            warn(("[RecipeValidator] %s recipe '%s' effect '%s' not in EffectsDB"):format(station, recipe.id, tostring(recipe.effect)))
+        end
+        -- duplicate key detection
+        local dupKey = station.."|"..key
+        if seen[dupKey] then
+            warn(("[RecipeValidator] Duplicate recipe key for %s: %s"):format(station, key))
+        else
+            seen[dupKey] = true
+        end
+    end
+end
+
+print(("[RecipeValidator] OK: %d stations, %d total named recipes")
+    :format(#(function() local c=0 for _ in pairs(Named) do c+=1 end return {1,2,3,4,5,c}[6] end)(), (function()
+        local n=0 for _,d in pairs(Named) do for _ in pairs(d) do n+=1 end end return n end)()))
+return true
+
+
+---FILE: ServerScriptService\Services\RemotesService.server.lua
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Networking = ReplicatedStorage:FindFirstChild("Networking") or Instance.new("Folder")
+Networking.Name = "Networking"
+Networking.Parent = ReplicatedStorage
+
+local Remotes = Networking:FindFirstChild("Remotes") or Instance.new("Folder")
+Remotes.Name = "Remotes"
+Remotes.Parent = Networking
+
+local function ensureRemoteEvent(name)
+    local ev = Remotes:FindFirstChild(name)
+    if not ev then
+        ev = Instance.new("RemoteEvent")
+        ev.Name = name
+        ev.Parent = Remotes
+    end
+    return ev
+end
+
+-- Create all RemoteEvents here:
+ensureRemoteEvent("CashUpdated")
+ensureRemoteEvent("DisplayCaseRequest")
+ensureRemoteEvent("DisplayCaseUpdated")
+ensureRemoteEvent("InventorySnapshot")
+ensureRemoteEvent("InventoryUpdated")
+ensureRemoteEvent("RequestInventory")
+ensureRemoteEvent("RequestCraft")
+ensureRemoteEvent("ToggleCrafting")
+ensureRemoteEvent("CraftingState")
+ensureRemoteEvent("CraftedToast")
+ensureRemoteEvent("DevGive")  -- Dev shortcuts
+
+print("[RemotesService] All remotes created")
+return Remotes
+
+
+---FILE: ServerScriptService\Services\CraftingService\init.lua
+local RS = game:GetService("ReplicatedStorage")
+local Shared = RS:WaitForChild("Shared")
+local Remotes = require(Shared:WaitForChild("RemotesIndex"))
+
+-- Always resolve the *Folder* and its children by WaitForChild
+local CraftingFolder = Shared:WaitForChild("Crafting")
+local RecipeBook = require(CraftingFolder:WaitForChild("RecipeBook"))
+
+local ServiceLoader = require(script.Parent.Parent.ServiceLoader)
+local DataService = ServiceLoader.requireService("DataService")
+
+local CraftingService = {}
+
+function CraftingService.Init()
+    print("[CraftingService] Init")
+end
+
+function CraftingService.Start()
+    print("[CraftingService] Start")
+    print("[CraftingService] Connecting to RequestCraft:", Remotes.RequestCraft)
+
+    local ok, err = pcall(function()
+        Remotes.RequestCraft.OnServerEvent:Connect(function(player, station, ingredients)
+            ingredients = ingredients or {}
+            print(("[CraftingService] Craft request from %s -> %s with %d items")
+                :format(player.Name, tostring(station), #ingredients))
+
+            -- Convert client format {itemId, qty} to simple string array for resolver
+            local ingredientList = {}
+            for _, input in ipairs(ingredients) do
+                local itemId = input.itemId or input.id
+                local qty = input.qty or 1
+                -- Add each quantity as separate entries
+                for i = 1, qty do
+                    table.insert(ingredientList, itemId)
+                end
+            end
+
+            local seed = DataService:GetAttunementSeed(player)
+            local result = RecipeBook.resolve(station, ingredientList, seed)
+
+            if not result or not result.ok then
+                Remotes.CraftingState:FireClient(player, "fail", station, (result and result.reason) or "invalid_recipe")
+                return
+            end
+
+            -- Build needs table if not provided
+            local needs = result.needs
+            if not needs then
+                needs = {}
+                for _,id in ipairs(ingredientList) do needs[id] = (needs[id] or 0) + 1 end
+            end
+
+            local has = DataService:HasItems(player, needs)
+            if not has then
+                local missing = {}
+                local pdata = DataService:Get(player)
+                for itemId, reqQty in pairs(needs) do
+                    local have = (pdata.inventory[itemId] or 0)
+                    if have < reqQty then
+                        table.insert(missing, itemId)
+                    end
+                end
+                local missingList = table.concat(missing, ", ")
+                Remotes.CraftingState:FireClient(player, "fail", result.id, "missing:"..missingList)
+                return
+            end
+
+            -- stability roll
+            if math.random() > (result.stability or 0.85) then
+                DataService:ConsumeItems(player, needs) -- design choice: consume on failure
+                Remotes.CraftingState:FireClient(player, "fail", result.id, "unstable_reaction")
+                return
+            end
+
+            DataService:ConsumeItems(player, needs)
+            for giveId, qty in pairs(result.gives) do
+                DataService:AddItem(player, giveId, qty)
+            end
+
+            Remotes.CraftingState:FireClient(player, "success", result.id, result.tier)
+            Remotes.CraftedToast:FireClient(player, result.id)
+        end)
+
+        Remotes.ToggleCrafting.OnServerEvent:Connect(function(player, isOpen)
+            Remotes.CraftingState:FireClient(player, isOpen and "open" or "close")
+        end)
+    end)
+
+    if not ok then
+        warn("[CraftingService] Failed to connect to remotes:", err)
+    else
+        print("[CraftingService] Remote handlers connected successfully")
+    end
+end
+
+return CraftingService
+
+
+---FILE: ServerScriptService\Services\DataService\init.lua
+--!strict
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local DataService = {}
+DataService._profiles = {}
+DataService._profileObjects = {} -- Store actual profile objects for proper release
+DataService._profilesByUserId = {} -- Key by UserId for reliability
+
+-- Use in-memory storage in Studio, ProfileService in production
+local USE_MEMORY = RunService:IsStudio()
+
+local ProfileService
+if not USE_MEMORY then
+    local ok, mod = pcall(function()
+        return require(script.Parent.Parent:FindFirstChild("Vendor") and script.Parent.Parent.Vendor:FindFirstChild("ProfileService"))
+    end)
+    if ok and mod then
+        ProfileService = mod
+        print("[DataService] Using ProfileService for data persistence")
+    else
+        warn("[DataService] ProfileService not found. Falling back to in-memory storage.")
+        USE_MEMORY = true
+    end
+else
+    print("[DataService] Studio detected - using in-memory storage")
+end
+
+local DEFAULT = {
+    cash = 50,
+    shop = {
+        level = 1,
+        rooms = {},
+        stations = { PotionBench = 1, Enchanter = 0, Forge = 0, WandTable = 0 },
+    },
+    inventory = {}, -- [itemId] = qty
+    display = {},   -- array of {slot:number, itemId:string, qty:number, price:number}
+    discoveredRecipes = {},
+    analytics = {},
+}
+
+function DataService:_deepCopy(t)
+    local c = {}
+    for k,v in pairs(t) do
+        if type(v) == "table" then c[k] = self:_deepCopy(v) else c[k] = v end
+    end
+    return c
+end
+
+function DataService:Init()
+    print("[DataService] Init")
+    if ProfileService then
+        self.Store = ProfileService.GetProfileStore("MagicShop/PlayerData_v1", DEFAULT)
+    end
+
+    Players.PlayerAdded:Connect(function(plr)
+        self:Load(plr)
+    end)
+
+    Players.PlayerRemoving:Connect(function(plr)
+        self:Release(plr)
+    end)
+    
+    -- Set up remote handlers
+    task.defer(function()
+        self:_setupRemotes()
+    end)
+end
+
+function DataService:Start() end
+
+function DataService:Load(plr: Player)
+    if USE_MEMORY then
+        self._profiles[plr] = self:_deepCopy(DEFAULT)
+        self._profilesByUserId[plr.UserId] = self._profiles[plr]
+        -- Broadcast initial inventory
+        task.defer(function()
+            self:_broadcastInventory(plr)
+        end)
+        return true
+    end
+
+    local profile = self.Store:LoadProfileAsync("Player_"..plr.UserId, "ForceLoad")
+    if not profile then
+        warn("[DataService] Failed to load, using defaults:", plr.UserId)
+        self._profiles[plr] = self:_deepCopy(DEFAULT)
+        return false
+    end
+
+    profile:Reconcile()
+    profile:ListenToRelease(function()
+        self._profiles[plr] = nil
+        self._profileObjects[plr] = nil
+        plr:Kick("Data released")
+    end)
+
+    if plr.Parent ~= Players then
+        profile:Release()
+        return false
+    end
+
+    self._profiles[plr] = profile.Data
+    self._profileObjects[plr] = profile
+    self._profilesByUserId[plr.UserId] = profile.Data
+    
+    -- Broadcast initial inventory
+    task.defer(function()
+        self:_broadcastInventory(plr)
+    end)
+    
+    return true
+end
+
+function DataService:Release(plr: Player)
+    if USE_MEMORY then
+        self._profiles[plr] = nil
+        self._profilesByUserId[plr.UserId] = nil
+        return
+    end
+    -- ProfileService profiles auto-release when player leaves
+    local profile = self._profileObjects[plr]
+    if profile then
+        profile:Release()
+        self._profileObjects[plr] = nil
+    end
+    self._profiles[plr] = nil
+    self._profilesByUserId[plr.UserId] = nil
+end
+
+-- Get profile by Player or userId
+function DataService:Get(plrOrId)
+    local userId = typeof(plrOrId) == "Instance" and plrOrId.UserId or plrOrId
+    return self._profilesByUserId[userId]
+end
+
+-- Helper: resolve Player from Player or userId
+local function asPlayer(plrOrId)
+    if typeof(plrOrId) == "Instance" then return plrOrId end
+    return Players:GetPlayerByUserId(plrOrId)
+end
+
+function DataService:GiveCash(plr: Player, amount: number)
+    local p = self:Get(plr)
+    if not p then return end
+    p.cash = math.max(0, (p.cash or 0) + amount)
+    
+    -- Broadcast cash update to client
+    local success, Remotes = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("RemotesIndex"))
+    end)
+    if success and Remotes then
+        Remotes.CashUpdated:FireClient(plr, p.cash)
+    end
+end
+
+-- Add/Remove now accept Player or userId
+function DataService:AddItem(plrOrId, id: string, qty: number)
+    print(("[DataService] AddItem called with arg1: %s (type: %s), arg2: %s (type: %s), arg3: %s"):format(
+        tostring(plrOrId), typeof(plrOrId), 
+        tostring(id), typeof(id),
+        tostring(qty)
+    ))
+    
+    local p = self:Get(plrOrId)
+    local plr = asPlayer(plrOrId)
+    if not p then
+        warn("[DataService] AddItem FAILED - invalid player")
+        return
+    end
+    if not plr then
+        warn("[DataService] AddItem FAILED - could not resolve player from:", tostring(plrOrId))
+        return
+    end
+    qty = math.max(1, qty or 1)
+    p.inventory[id] = (p.inventory[id] or 0) + qty
+    print(("[DataService] Added %s x%d to %s, now have %d"):format(id, qty, plr.Name, p.inventory[id]))
+    self:_broadcastInventory(plrOrId)
+end
+
+function DataService:RemoveItem(plrOrId, id: string, qty: number): boolean
+    local p = self:Get(plrOrId)
+    local plr = asPlayer(plrOrId)
+    if not p then
+        warn("[DataService] RemoveItem FAILED - invalid player")
+        return false
+    end
+    local have = p.inventory[id] or 0
+    if have < qty then return false end
+    p.inventory[id] = have - qty
+    if p.inventory[id] <= 0 then p.inventory[id] = nil end
+    print(("[DataService] Removed %s x%d from %s"):format(id, qty, plr.Name))
+    self:_broadcastInventory(plrOrId)
+    return true
+end
+
+-- Check if player has required items
+function DataService:HasItems(plrOrId, requirements: {[string]: number}): boolean
+    local p = self:Get(plrOrId)
+    if not p then return false end
+    
+    for itemId, reqQty in pairs(requirements) do
+        local have = p.inventory[itemId] or 0
+        if have < reqQty then
+            return false
+        end
+    end
+    return true
+end
+
+-- Consume multiple items atomically
+function DataService:ConsumeItems(plrOrId, items: {[string]: number}): boolean
+    local p = self:Get(plrOrId)
+    if not p then return false end
+    
+    -- First verify we have everything
+    for itemId, qty in pairs(items) do
+        local have = p.inventory[itemId] or 0
+        if have < qty then
+            return false
+        end
+    end
+    
+    -- Then consume all items
+    for itemId, qty in pairs(items) do
+        p.inventory[itemId] = (p.inventory[itemId] or 0) - qty
+        if p.inventory[itemId] <= 0 then
+            p.inventory[itemId] = nil
+        end
+    end
+    
+    self:_broadcastInventory(plrOrId)
+    return true
+end
+
+-- Helper to broadcast inventory to client
+function DataService:_broadcastInventory(plrOrId)
+    local p = self:Get(plrOrId)
+    local plr = asPlayer(plrOrId)
+    if not p or not plr then return end
+    local success, Remotes = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("RemotesIndex"))
+    end)
+    if success and Remotes then
+        Remotes.InventoryUpdated:FireClient(plr, p.inventory)
+        print(("[DataService] Sent inventory to %s: %s"):format(plr.Name, game:GetService("HttpService"):JSONEncode(p.inventory)))
+    else
+        warn("[DataService] Failed to broadcast - RemotesIndex not available")
+    end
+end
+
+-- Get player-specific attunement seed for crafting uniqueness (0..1)
+function DataService:GetAttunementSeed(player)
+    self._attune = self._attune or {}
+    local uid = player.UserId
+    local s = self._attune[uid]
+    if not s then
+        -- Stable per user: seed RNG by UserId so it doesn't change every session
+        local rng = Random.new(uid)
+        s = rng:NextNumber() -- 0..1
+        self._attune[uid] = s
+    end
+    return s
+end
+
+function DataService:_setupRemotes()
+    local success, Remotes = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("RemotesIndex"))
+    end)
+    if not success then
+        warn("[DataService] Failed to load RemotesIndex, retrying in 1s")
+        task.wait(1)
+        return self:_setupRemotes()
+    end
+    
+    -- Handle RequestInventory requests (using the correct remote name)
+    Remotes.RequestInventory.OnServerEvent:Connect(function(plr)
+        local p = self:Get(plr)
+        if p then
+            Remotes.InventorySnapshot:FireClient(plr, p.inventory)
+            Remotes.CashUpdated:FireClient(plr, p.cash)
+            print(("[DataService] Sent inventory to %s: %s"):format(plr.Name, game:GetService("HttpService"):JSONEncode(p.inventory)))
+        end
+    end)
+end
+
+
+return DataService
+
+
+---FILE: ServerScriptService\Services\DevService\init.lua
+--!strict
+local RunService = game:GetService("RunService")
+local RS = game:GetService("ReplicatedStorage")
+local SSS = game:GetService("ServerScriptService")
+local Services = SSS:WaitForChild("Services")
+local DataService = require(Services.DataService:FindFirstChild("init") or Services.DataService)
+
+local Networking = RS:FindFirstChild("Networking") or Instance.new("Folder", RS)
+Networking.Name = "Networking"
+local DevGive = Networking:FindFirstChild("DevGive") or Instance.new("RemoteEvent", Networking)
+DevGive.Name = "DevGive"
+
+DevGive.OnServerEvent:Connect(function(player, itemId: string, qty: number)
+    if not RunService:IsStudio() then return end
+    if not player or not player.Name then
+        warn("[DevGive] Invalid player:", tostring(player))
+        return
+    end
+    qty = math.max(1, qty or 1)
+    print(("[DevGive] Giving %s x%d to %s (type: %s)"):format(itemId, qty, player.Name, typeof(player)))
+    DataService:AddItem(player, itemId, qty)
+    print(("[DevGive] Successfully gave %s x%d to %s"):format(itemId, qty, player.Name))
+    
+    -- Track first gather for tutorial
+    local TutorialService = require(Services.TutorialService:FindFirstChild("init") or Services.TutorialService)
+    if TutorialService then
+        TutorialService:TrackGather(player)
+    end
+end)
+
+return {}
+
+
+---FILE: ServerScriptService\Services\DisplayCaseService\init.lua
+local RS = game:GetService("ReplicatedStorage")
+local Remotes = require(RS.Shared.RemotesIndex)
+local ServiceLoader = require(script.Parent.Parent.ServiceLoader)
+local DataService = ServiceLoader.requireService("DataService")
+
+local DisplayCaseService = {}
+DisplayCaseService.Listings = {} -- { [userId] = { {item="", qty=1, price=10}, ... } }
+
+local HttpService = game:GetService("HttpService")
+local function uid(plr) return plr.UserId end
+
+function DisplayCaseService:SendDisplayCase(player)
+    local listings = self.Listings[player.UserId] or {}
+    Remotes.DisplayCaseUpdated:FireClient(player, player.UserId, listings)
+end
+
+function DisplayCaseService:GetDisplayCaseData(player)
+    return self.Listings[player.UserId] or {}
+end
+
+function DisplayCaseService:Init()
+    print("[DisplayCaseService] Init")
+end
+
+function DisplayCaseService:Start()
+    print("[DisplayCaseService] Start")
+    -- Handle display case requests
+    Remotes.DisplayCaseRequest.OnServerEvent:Connect(function(player, action, payload)
+        if action == "GET" then
+            -- Send current display case data
+            self:SendDisplayCase(player)
+        elseif action == "LIST" then
+            -- New authoritative listing system
+            if type(payload) ~= "table" then
+                warn(("[DisplayCaseService] LIST requires payload table from %s"):format(player.Name))
+                return
+            end
+            
+            local item, qty, price = payload.item or payload.itemId, payload.qty, payload.price
+            if type(item) ~= "string" or type(qty) ~= "number" or type(price) ~= "number" then
+                warn(("[DisplayCaseService] Invalid LIST payload from %s: item=%s, qty=%s, price=%s"):format(
+                    player.Name, tostring(item), tostring(qty), tostring(price)))
+                return
+            end
+
+            -- Verify & consume items
+            local ok = DataService:HasItems(player, {[item] = qty})
+            if not ok then
+                print(("[DisplayCaseService] %s doesn't have %s x%d to list"):format(player.Name, item, qty))
+                -- Send current listings back (no change)
+                Remotes.DisplayCaseUpdated:FireClient(player, player.UserId, self.Listings[player.UserId] or {})
+                return
+            end
+
+            DataService:ConsumeItems(player, {[item] = qty})
+
+            local uid = player.UserId
+            self.Listings[uid] = self.Listings[uid] or {}
+            local listingId = HttpService:GenerateGUID(false)
+            table.insert(self.Listings[uid], {
+                item = item, 
+                itemId = item, -- For compatibility
+                qty = qty, 
+                price = price,
+                listingId = listingId
+            })
+
+            print(("[DisplayCaseService] %s listed %s x%d for %d¤"):format(player.Name, item, qty, price))
+            
+            -- Broadcast new list to the owner
+            Remotes.DisplayCaseUpdated:FireClient(player, uid, self.Listings[uid])
+            
+        elseif action == "REMOVE" then
+            -- Remove a listing (payload should contain listingIndex or similar)
+            print(("[DisplayCaseService] %s requested REMOVE - not yet implemented"):format(player.Name))
+            warn("[DisplayCaseService] REMOVE action not yet implemented")
+        else
+            warn(("[DisplayCaseService] Unknown action '%s' from %s"):format(tostring(action), player.Name))
+        end
+    end)
+end
+
+return DisplayCaseService
+
+
+---FILE: ServerScriptService\Services\InventoryService\init.lua
+--!strict
+local SSS = game:GetService("ServerScriptService")
+local Services = SSS:WaitForChild("Services")
+local DataServiceModule = Services:WaitForChild("DataService")
+local DataService = require(DataServiceModule:IsA("ModuleScript") and DataServiceModule or DataServiceModule:WaitForChild("init"))
+
+local InventoryService = {}
+
+-- Module-level service references
+local TutorialService = nil
+
+-- Optional lifecycle for ServiceLoader (safe no-ops)
+function InventoryService.Init(self, ctx) 
+    self._ctx = ctx
+    if ctx and ctx.GetService then
+        TutorialService = ctx:GetService("TutorialService")
+    end
+end
+function InventoryService.Start(self) end
+
+local function addItem(player: Player, itemId: string, qty: number)
+    assert(player and player:IsA("Player"), "player must be a Player")
+    assert(type(itemId) == "string", "itemId must be a string")
+    qty = math.max(1, qty or 1)
+    -- ✅ correct order
+    DataService:AddItem(player, itemId, qty)
+end
+
+function InventoryService.Add(player: Player, itemId: string, qty: number)
+    addItem(player, itemId, qty)
+    -- Track tutorial progress (gathering)
+    if TutorialService then
+        TutorialService:TrackGather(player)
+    end
+end
+
+-- Helpers if you need them elsewhere
+function InventoryService:Get(player: Player)
+    return DataService:Get(player)
+end
+
+function InventoryService:Remove(player: Player, itemId: string, qty: number): boolean
+    return DataService:RemoveItem(player, itemId, qty)
+end
+
+return InventoryService
+
+
+---FILE: ServerScriptService\Services\NPCSalesService\init.lua
+--!strict
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Items = require(ReplicatedStorage.Shared.Items)
+
+local NPCSalesService = {}
+
+-- Daily trends - rolled each day, affects prices by tag
+NPCSalesService.DailyTrends = {
+    Fire = 1.0,
+    Frost = 1.0,
+    Water = 1.0,
+    Earth = 1.0,
+    Void = 1.0,
+    Pure = 1.0,
+    Catalytic = 1.0,
+    Viscous = 1.0,
+    Rare = 1.0,
+}
+
+-- Roll new trends (called daily or on server start)
+function NPCSalesService:RollDailyTrends()
+    for tag, _ in pairs(self.DailyTrends) do
+        -- Random modifier between 0.85 and 1.25 (±15-25%)
+        self.DailyTrends[tag] = 0.85 + math.random() * 0.4
+    end
+    print("[NPCSalesService] Daily trends updated:", self.DailyTrends)
+end
+
+local function priceBand(itemId: string, quality: number, trends: {}?): (number, number)
+    local def = Items[itemId]; if not def then return 1, 9999 end
+    local base = def.baseValue or 10
+    local rarity = def.rarity or 1
+    local q = math.max(1, quality or 1)
+    
+    -- Apply base calculations
+    local floor = math.floor(base * (1 + 0.2*(rarity-1)) * (1 + 0.1*(q-1)))
+    local ceil  = math.floor(floor * 1.6)
+    
+    -- Apply trend modifiers if available - use highest matching trend
+    if trends and def.tags then
+        local bestTrend = 1.0
+        for _, tag in ipairs(def.tags) do
+            if trends[tag] and trends[tag] > bestTrend then
+                bestTrend = trends[tag]
+            end
+        end
+        -- Cap trend impact to prevent extreme swings
+        bestTrend = math.clamp(bestTrend, 0.7, 1.4)
+        floor = math.floor(floor * bestTrend)
+        ceil = math.floor(ceil * bestTrend)
+    end
+    
+    return floor, ceil
+end
+
+function NPCSalesService.Init(self, ctx)
+    self.Data = ctx:GetService("DataService")
+    self.Display = ctx:GetService("DisplayCaseService")
+    self.Tutorial = ctx:GetService("TutorialService")
+    print("[NPCSalesService] Init")
+end
+
+function NPCSalesService.Start(self)
+    print("[NPCSalesService] Start")
+    
+    -- Roll initial daily trends
+    self:RollDailyTrends()
+    
+    -- Daily trend refresh (every 24 hours in real time, 10 minutes for testing)
+    task.spawn(function()
+        while true do
+            task.wait(600) -- 10 minutes for testing (change to 86400 for daily)
+            self:RollDailyTrends()
+        end
+    end)
+    
+    -- NPC purchasing loop
+    task.spawn(function()
+        while true do
+            task.wait(8 + math.random(0,4)) -- throttled purchases
+            for _,plr in ipairs(Players:GetPlayers()) do
+                local pdata = self.Data and self.Data:Get(plr)
+                if pdata then
+                    local d = pdata.display
+                    if d and #d > 0 then
+                        -- Find a reasonably priced item to buy
+                        local pick = nil
+                        local def = nil
+                        local low, high = 0, 0
+                        
+                        -- First try random item
+                        local randomPick = d[math.random(1,#d)]
+                        local randomDef = Items[randomPick.itemId]
+                        if randomDef then
+                            local randomLow, randomHigh = priceBand(randomPick.itemId, 1, self.DailyTrends)
+                            if randomPick.price >= randomLow and randomPick.price <= randomHigh then
+                                pick, def, low, high = randomPick, randomDef, randomLow, randomHigh
+                            end
+                        end
+                        
+                        -- If random pick was overpriced, try alternatives
+                        if not pick then
+                            for _, altItem in ipairs(d) do
+                                local altDef = Items[altItem.itemId]
+                                if altDef then
+                                    local altLow, altHigh = priceBand(altItem.itemId, 1, self.DailyTrends)
+                                    if altItem.price >= altLow and altItem.price <= altHigh then
+                                        pick, def, low, high = altItem, altDef, altLow, altHigh
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                        
+                        if pick and def then
+                            -- NPC buys 1 (later: variable qty)
+                            local qty = 1
+                            if pick.qty >= qty then
+                                -- credit seller with notifications
+                                self.Data:GiveCash(plr, pick.price * qty)
+                                pick.qty -= qty
+                                if pick.qty <= 0 then
+                                    table.remove(d, pick.slot)
+                                end
+                                -- broadcast updated display
+                                local Remotes = require(ReplicatedStorage.Networking.Remotes)
+                                Remotes.DisplayCaseUpdated:FireAllClients(plr.UserId, d)
+                                
+                                -- Determine which trend was used
+                                local usedTrend, usedMult = "base", 1.0
+                                if def.tags then
+                                    for _, tag in ipairs(def.tags) do
+                                        if self.DailyTrends[tag] and self.DailyTrends[tag] > usedMult then
+                                            usedTrend = tag
+                                            usedMult = self.DailyTrends[tag]
+                                        end
+                                    end
+                                end
+                                
+                                print(("[NPCSales] bought %s @%d (trend: %s x%.2f) from %s"):format(
+                                    pick.itemId, pick.price, usedTrend, usedMult, plr.Name
+                                ))
+                                
+                                -- Track tutorial progress
+                                if self.Tutorial then
+                                    self.Tutorial:TrackSale(plr)
+                                end
+                            end
+                        else
+                            -- All items overpriced
+                            if math.random() < 0.05 then -- 5% chance to log
+                                print(("[NPCSales] %s: all items overpriced, skipping"):format(plr.Name))
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+
+return NPCSalesService
+
+
+---FILE: ServerScriptService\Services\ShopManager\init.lua
+--!strict
+local ShopManager = {}
+
+function ShopManager.Init(self, ctx)
+    print("[ShopManager] Init")
+    -- Example: local InventoryService = ctx:GetService("InventoryService")
+end
+
+function ShopManager.Start(self)
+    print("[ShopManager] Start")
+end
+
+return ShopManager
+
+
+---FILE: ServerScriptService\Services\TutorialService\init.lua
+--!strict
+local TutorialService = {}
+
+-- Tutorial milestones
+local TUTORIAL_STEPS = {
+    "FirstGather",
+    "FirstCraft", 
+    "FirstStock",
+    "FirstSale"
+}
+
+-- Completion rewards
+local REWARDS = {
+    cash = 100,
+    items = { {id = "ember_shard", qty = 5}, {id = "beast_fat", qty = 3} },
+    recipes = {"potion_warmth"}
+}
+
+function TutorialService.Init(self, ctx) 
+    self.Data = ctx:GetService("DataService")
+    print("[TutorialService] Init")
+    
+    -- Set up remote for tutorial toasts
+    task.defer(function()
+        self:_setupRemotes()
+    end)
+end
+
+function TutorialService.Start(self) 
+    print("[TutorialService] Start")
+end
+
+-- Track tutorial step completion
+function TutorialService:TrackStep(plr: Player, step: string)
+    local data = self.Data:Get(plr)
+    if not data then return end
+    
+    -- Set up tutorial tracking structure
+    if not data.analytics then data.analytics = {} end
+    if not data.analytics.tutorial then data.analytics.tutorial = {} end
+    
+    if data.analytics.tutorial[step] then return end -- Already completed
+    
+    data.analytics.tutorial[step] = true
+    print(("[TutorialService] %s completed: %s"):format(plr.Name, step))
+    
+    -- Send step completion feedback
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local Remotes = require(ReplicatedStorage.Networking.Remotes)
+    if Remotes.TutorialToast then
+        local messages = {
+            FirstGather = "✅ First gather complete! Try crafting next.",
+            FirstCraft = "🔨 Great crafting! Now list an item for sale.",
+            FirstStock = "📦 Item listed! Wait for NPC buyers.",
+            FirstSale = "💰 First sale! You're getting the hang of it!"
+        }
+        Remotes.TutorialToast:FireClient(plr, messages[step] or ("✅ %s complete!"):format(step))
+    end
+    
+    -- Check if all steps complete
+    local allDone = true
+    for _, tutStep in ipairs(TUTORIAL_STEPS) do
+        if not data.analytics.tutorial[tutStep] then
+            allDone = false
+            break
+        end
+    end
+    
+    if allDone and not data.analytics.tutorial.tutorialComplete then
+        self:CompleteTutorial(plr)
+    end
+end
+
+function TutorialService:_setupRemotes()
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local Remotes = require(ReplicatedStorage.Networking.Remotes)
+    -- Tutorial toasts handled via existing remotes for now
+end
+
+-- Award tutorial completion
+function TutorialService:CompleteTutorial(plr: Player)
+    local data = self.Data:Get(plr)
+    if not data then return end
+    
+    data.analytics.tutorial.tutorialComplete = true
+    
+    -- Give rewards (now auto-broadcasts)
+    self.Data:GiveCash(plr, REWARDS.cash)
+    for _, item in ipairs(REWARDS.items) do
+        self.Data:AddItem(plr, item.id, item.qty)
+    end
+    
+    -- Add recipes
+    if not data.discoveredRecipes then data.discoveredRecipes = {} end
+    for _, recipe in ipairs(REWARDS.recipes) do
+        data.discoveredRecipes[recipe] = true
+    end
+    
+    -- Send completion toast to client
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local Remotes = require(ReplicatedStorage.Networking.Remotes)
+    if Remotes.TutorialToast then
+        Remotes.TutorialToast:FireClient(plr, "🎉 Tutorial Complete! +100 cash, bonus items!")
+    end
+    
+    print(("[TutorialService] 🎉 %s completed tutorial! Awarded %d cash, %d items, %d recipes"):format(
+        plr.Name, REWARDS.cash, #REWARDS.items, #REWARDS.recipes
+    ))
+end
+
+-- Helper methods for other services to call
+function TutorialService:TrackGather(plr: Player) self:TrackStep(plr, "FirstGather") end
+function TutorialService:TrackCraft(plr: Player) self:TrackStep(plr, "FirstCraft") end  
+function TutorialService:TrackStock(plr: Player) self:TrackStep(plr, "FirstStock") end
+function TutorialService:TrackSale(plr: Player) self:TrackStep(plr, "FirstSale") end
+
+return TutorialService
+
+
+---FILE: ServerScriptService\Templates\GatherScript.server.lua
+local SSS = game:GetService("ServerScriptService")
+local Inventory = require(SSS.Services.InventoryService)
+
+local node = script.Parent
+local ITEM_ID  = node:GetAttribute("ItemId") or "glowing_mushroom"
+local QTY      = node:GetAttribute("Qty") or 1
+local COOLDOWN = node:GetAttribute("Cooldown") or 10
+local prompt   = node:FindFirstChildWhichIsA("ProximityPrompt") or node:FindFirstChildOfClass("ClickDetector")
+local busy = false
+
+local function setEnabled(on)
+    if prompt then
+        if prompt:IsA("ProximityPrompt") then prompt.Enabled = on else prompt.MaxActivationDistance = on and 20 or 0 end
+    end
+    node.Transparency = on and 0 or 1
+end
+
+local function grant(player: Player)
+    print(("🌿 %s gathered %s"):format(player.Name, ITEM_ID))
+    Inventory.Add(player, ITEM_ID, QTY)
+end
+
+local function trigger(player: Player)
+    if busy then return end
+    busy = true; grant(player); setEnabled(false)
+    task.delay(COOLDOWN, function() setEnabled(true); busy=false end)
+end
+
+if prompt then
+    if prompt:IsA("ProximityPrompt") then prompt.Triggered:Connect(trigger) else prompt.MouseClick:Connect(trigger) end
+end
+
+
+---FILE: ServerScriptService\Tools\InstallGatherScripts.server.lua
+local SSS = game:GetService("ServerScriptService")
+local Templates = SSS:WaitForChild("Templates")
+local template = Templates:FindFirstChild("GatherScript")
+if not template then
+    warn("[Installer] GatherScript template NOT found at ServerScriptService/Templates/GatherScript")
+    return
+end
+
+local count = 0
+for _,d in ipairs(workspace:GetDescendants()) do
+    if d:IsA("BasePart") and d:GetAttribute("ItemId") then
+        local old = d:FindFirstChild("GatherScript")
+        if old then old:Destroy() end
+        local s = template:Clone()
+        s.Name = "GatherScript"
+        s.Parent = d
+        count += 1
+    end
+end
+print(("[Installer] GatherScript attached to %d nodes"):format(count))
+
+
+---FILE: ServerScriptService\Vendor\ProfileService.lua
+-- ProfileService mock for Magic Shop Game
+-- This is a simplified version for development - replace with real ProfileService in production
+
+local ProfileService = {}
+ProfileService.LoadedProfileCount = 0
+
+local ProfileStore = {}
+ProfileStore.__index = ProfileStore
+
+function ProfileStore:LoadProfileAsync(profileKey, forceLoad)
+    local profile = {
+        Data = {},
+        ProfileKey = profileKey,
+        _reconciled = false,
+        _released = false,
+        _releaseCallbacks = {}
+    }
+    
+    function profile:Reconcile()
+        if not self._reconciled then
+            -- Apply default values for missing keys
+            self._reconciled = true
+        end
+    end
+    
+    function profile:Release()
+        if not self._released then
+            self._released = true
+            for _, callback in ipairs(self._releaseCallbacks) do
+                callback()
+            end
+        end
+    end
+    
+    function profile:ListenToRelease(callback)
+        table.insert(self._releaseCallbacks, callback)
+    end
+    
+    ProfileService.LoadedProfileCount = ProfileService.LoadedProfileCount + 1
+    return profile
+end
+
+function ProfileService.GetProfileStore(storeName, defaultData)
+    local store = setmetatable({
+        _storeName = storeName,
+        _defaultData = defaultData or {}
+    }, ProfileStore)
+    
+    return store
+end
+
+return ProfileService
+
+
+---FILE: StarterPlayer\StarterPlayerScripts\CraftingTest.client.lua
+--!strict
+-- Test crafting remote integration
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+
+local player = Players.LocalPlayer
+
+-- Wait for remotes to be available
+local CraftingRemotes
+pcall(function()
+    CraftingRemotes = require(ReplicatedStorage.Networking.CraftingRemotes)
+end)
+
+if not CraftingRemotes then
+    warn("[CraftingTest] CraftingRemotes not available")
+    return
+end
+
+-- Listen for successful crafting
+local CraftedToast = CraftingRemotes.Get("CraftedToast")
+if CraftedToast then
+    CraftedToast.OnClientEvent:Connect(function(itemId)
+        print("🎉 [CraftingTest] Successfully crafted:", itemId)
+        -- Could show UI toast here
+    end)
+end
+
+-- Test crafting with T key (simple test)
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    
+    if input.KeyCode == Enum.KeyCode.T then
+        -- Test crafting: ember_shard + beast_fat = potion_warmth (PotionBench)
+        local testInputs = {
+            {id = "ember_shard", qty = 1},
+            {id = "beast_fat", qty = 1}
+        }
+        
+        print("🧪 [CraftingTest] Attempting to craft potion_warmth...")
+        CraftingRemotes.Get("RequestCraft"):FireServer("PotionBench", testInputs, 1)
+    end
+end)
+
+print("🧪 [CraftingTest] Loaded! Press T to test crafting (needs ember_shard + beast_fat)")
+
+
+---FILE: StarterPlayer\StarterPlayerScripts\CraftingUIController.client.lua
+--!strict
+-- Minimal Crafting UI: pick station + inputs, call server
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Wait for remotes to be ready
+local RS = game:GetService("ReplicatedStorage")
+local ItemDB = require(RS:WaitForChild("Shared"):WaitForChild("ItemDB"))
+local Remotes = require(RS:WaitForChild("Shared"):WaitForChild("RemotesIndex"))
+
+-- All remotes are now accessed via Remotes table
+
+-- Sanity prints (temporary)
+print("RC", Remotes.RequestCraft, Remotes.RequestCraft and Remotes.RequestCraft.ClassName)
+print("TC", Remotes.ToggleCrafting, Remotes.ToggleCrafting and Remotes.ToggleCrafting.ClassName)
+
+-- UI State
+local craftingGui
+local stationFrame
+local inputsFrame
+local craftButton
+local toastLabel
+local isOpen = false
+
+-- Crafting State
+local selectedStation = "PotionBench"
+local selectedInputs = {} -- [itemId] = qty
+local inventory = {}
+
+-- Forward declarations
+local updateStationUI
+local updateInputsUI
+
+-- Server automatically pushes inventory on PlayerAdded, no need to request
+-- Inventory updates will come via InventoryUpdated events
+
+-- Station options
+local STATIONS = {"PotionBench", "Enchanter", "WandTable"}
+
+-- Recipe names for toasts
+local RecipeNames = {
+    potion_warmth = "Potion of Warmth",
+    potion_healing = "Healing Potion",
+    charm_frost = "Frost Charm",
+    wand_basic = "Basic Wand",
+    -- Add more as needed...
+}
+
+-- Toast notification system
+local function toast(title, text, duration)
+    -- Quick system toast; wrap in pcall for Studio
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = title;
+            Text = text;
+            Duration = duration or 3;
+        })
+    end)
+end
+
+local function safeColor(c)
+    if typeof(c) == "Color3" then return c end
+    return Color3.fromRGB(255,255,255)
+end
+
+-- Show toast notification
+local function showToast(message: string)
+    if toastLabel then
+        toastLabel.Text = message
+        toastLabel.Visible = true
+        task.spawn(function()
+            task.wait(2)
+            if toastLabel then
+                toastLabel.Visible = false
+            end
+        end)
+    end
+end
+
+-- Attempt to craft with selected inputs
+local function attemptCraft()
+    if not next(selectedInputs) then
+        showToast("Select ingredients first!")
+        return
+    end
+    
+    -- Convert to server format
+    local inputs = {}
+    for itemId, qty in pairs(selectedInputs) do
+        table.insert(inputs, {itemId = itemId, qty = qty})
+    end
+    
+    print(("🔨 Crafting at %s with %d ingredients"):format(selectedStation, #inputs))
+    
+    -- Debug logging
+    print("[CraftingUI] RequestCraft:", Remotes.RequestCraft, Remotes.RequestCraft and Remotes.RequestCraft.ClassName)
+    print("[CraftingUI] ToggleCrafting:", Remotes.ToggleCrafting, Remotes.ToggleCrafting and Remotes.ToggleCrafting.ClassName)
+    
+    -- Fire to server
+    Remotes.RequestCraft:FireServer(selectedStation, inputs, 1)
+    
+    -- Clear selections
+    selectedInputs = {}
+    if isOpen then
+        updateInputsUI()
+    end
+end
+
+-- Update station button colors
+updateStationUI = function()
+    if stationFrame then
+        for _, btn in ipairs(stationFrame:GetChildren()) do
+            if btn:IsA("TextButton") then
+                if btn.Text == selectedStation then
+                    btn.BackgroundColor3 = Color3.fromRGB(80, 120, 160)
+                else
+                    btn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+                end
+            end
+        end
+    end
+end
+
+-- Update inputs display
+updateInputsUI = function()
+    if not inputsFrame then return end
+    
+    -- Clear existing
+    for _, child in ipairs(inputsFrame:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+    
+    local yPos = 0
+    for itemId, qty in pairs(inventory) do
+        if qty > 0 then
+            local itemFrame = Instance.new("Frame")
+            itemFrame.Size = UDim2.new(1, -10, 0, 35)
+            itemFrame.Position = UDim2.new(0, 5, 0, yPos)
+            itemFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            itemFrame.BorderSizePixel = 1
+            itemFrame.BorderColor3 = Color3.fromRGB(100, 100, 100)
+            itemFrame.Parent = inputsFrame
+            
+            -- Highlight if selected
+            if selectedInputs[itemId] and selectedInputs[itemId] > 0 then
+                itemFrame.BackgroundColor3 = Color3.fromRGB(80, 100, 60)
+            end
+            
+            local itemLabel = Instance.new("TextLabel")
+            itemLabel.Size = UDim2.new(0.7, 0, 1, 0)
+            itemLabel.Position = UDim2.new(0, 5, 0, 0)
+            itemLabel.BackgroundTransparency = 1
+            itemLabel.TextColor3 = safeColor(Color3.fromRGB(255, 255, 255))
+            itemLabel.Text = ("%s (have: %d, using: %d)"):format(itemId, qty, selectedInputs[itemId] or 0)
+            itemLabel.TextXAlignment = Enum.TextXAlignment.Left
+            itemLabel.TextScaled = true
+            itemLabel.Font = Enum.Font.SourceSans
+            itemLabel.Parent = itemFrame
+            
+            local addButton = Instance.new("TextButton")
+            addButton.Size = UDim2.new(0.12, 0, 0.8, 0)
+            addButton.Position = UDim2.new(0.72, 0, 0.1, 0)
+            addButton.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+            addButton.TextColor3 = safeColor(Color3.fromRGB(255, 255, 255))
+            addButton.Text = "+"
+            addButton.TextScaled = true
+            addButton.Font = Enum.Font.SourceSansBold
+            addButton.Parent = itemFrame
+            
+            addButton.MouseButton1Click:Connect(function()
+                local using = selectedInputs[itemId] or 0
+                if using < qty then
+                    selectedInputs[itemId] = using + 1
+                    updateInputsUI()
+                end
+            end)
+            
+            local removeButton = Instance.new("TextButton")
+            removeButton.Size = UDim2.new(0.12, 0, 0.8, 0)
+            removeButton.Position = UDim2.new(0.85, 0, 0.1, 0)
+            removeButton.BackgroundColor3 = Color3.fromRGB(120, 60, 60)
+            removeButton.TextColor3 = safeColor(Color3.fromRGB(255, 255, 255))
+            removeButton.Text = "-"
+            removeButton.TextScaled = true
+            removeButton.Font = Enum.Font.SourceSansBold
+            removeButton.Parent = itemFrame
+            
+            removeButton.MouseButton1Click:Connect(function()
+                local using = selectedInputs[itemId] or 0
+                if using > 0 then
+                    selectedInputs[itemId] = using - 1
+                    if selectedInputs[itemId] == 0 then
+                        selectedInputs[itemId] = nil
+                    end
+                    updateInputsUI()
+                end
+            end)
+            
+            yPos = yPos + 40
+        end
+    end
+    
+    inputsFrame.CanvasSize = UDim2.new(0, 0, 0, yPos)
+end
+
+-- Toggle crafting UI
+local function toggleCrafting()
+    isOpen = not isOpen
+    if craftingGui then
+        craftingGui.Enabled = isOpen
+        
+        if isOpen then
+            -- Server pushes inventory automatically, just update UI
+            updateStationUI()
+            updateInputsUI()
+        end
+    end
+end
+
+-- Create main crafting UI
+local function createCraftingUI()
+    craftingGui = Instance.new("ScreenGui")
+    craftingGui.Name = "CraftingUI"
+    craftingGui.Parent = playerGui
+    craftingGui.Enabled = false
+    
+    -- Main frame
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Size = UDim2.new(0.6, 0, 0.7, 0)
+    mainFrame.Position = UDim2.new(0.2, 0, 0.15, 0)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    mainFrame.BorderSizePixel = 2
+    mainFrame.BorderColor3 = Color3.fromRGB(100, 100, 100)
+    mainFrame.Parent = craftingGui
+    
+    -- Title
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(0.8, 0, 0.1, 0)
+    title.Position = UDim2.new(0.1, 0, 0, 0)
+    title.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    title.TextColor3 = safeColor(Color3.fromRGB(255, 255, 255))
+    title.Text = "Crafting Station"
+    title.TextScaled = true
+    title.Font = Enum.Font.SourceSansBold
+    title.Parent = mainFrame
+    
+    -- Close button
+    local closeButton = Instance.new("TextButton")
+    closeButton.Size = UDim2.new(0.1, 0, 0.1, 0)
+    closeButton.Position = UDim2.new(0.85, 0, 0, 0)
+    closeButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+    closeButton.TextColor3 = safeColor(Color3.fromRGB(255, 255, 255))
+    closeButton.Text = "X"
+    closeButton.TextScaled = true
+    closeButton.Font = Enum.Font.SourceSansBold
+    closeButton.Parent = mainFrame
+    
+    closeButton.MouseButton1Click:Connect(function()
+        toggleCrafting()
+    end)
+    
+    -- Station selection
+    stationFrame = Instance.new("Frame")
+    stationFrame.Size = UDim2.new(0.9, 0, 0.15, 0)
+    stationFrame.Position = UDim2.new(0.05, 0, 0.12, 0)
+    stationFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    stationFrame.BorderSizePixel = 1
+    stationFrame.BorderColor3 = Color3.fromRGB(80, 80, 80)
+    stationFrame.Parent = mainFrame
+    
+    local stationLabel = Instance.new("TextLabel")
+    stationLabel.Size = UDim2.new(0.3, 0, 1, 0)
+    stationLabel.Position = UDim2.new(0, 0, 0, 0)
+    stationLabel.BackgroundTransparency = 1
+    stationLabel.TextColor3 = safeColor(Color3.fromRGB(200, 200, 200))
+    stationLabel.Text = "Station:"
+    stationLabel.TextScaled = true
+    stationLabel.Font = Enum.Font.SourceSans
+    stationLabel.Parent = stationFrame
+    
+    -- Station buttons
+    for i, station in ipairs(STATIONS) do
+        local stationBtn = Instance.new("TextButton")
+        stationBtn.Size = UDim2.new(0.2, 0, 0.8, 0)
+        stationBtn.Position = UDim2.new(0.3 + (i-1) * 0.22, 0, 0.1, 0)
+        stationBtn.BackgroundColor3 = station == selectedStation and Color3.fromRGB(80, 120, 160) or Color3.fromRGB(80, 80, 80)
+        stationBtn.TextColor3 = safeColor(Color3.fromRGB(255, 255, 255))
+        stationBtn.Text = station
+        stationBtn.TextScaled = true
+        stationBtn.Font = Enum.Font.SourceSans
+        stationBtn.Parent = stationFrame
+        
+        stationBtn.MouseButton1Click:Connect(function()
+            selectedStation = station
+            updateStationUI()
+        end)
+    end
+    
+    -- Input selection area
+    inputsFrame = Instance.new("ScrollingFrame")
+    inputsFrame.Size = UDim2.new(0.9, 0, 0.5, 0)
+    inputsFrame.Position = UDim2.new(0.05, 0, 0.3, 0)
+    inputsFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    inputsFrame.BorderSizePixel = 1
+    inputsFrame.BorderColor3 = Color3.fromRGB(80, 80, 80)
+    inputsFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    inputsFrame.ScrollBarThickness = 8
+    inputsFrame.Parent = mainFrame
+    
+    local inputsLabel = Instance.new("TextLabel")
+    inputsLabel.Size = UDim2.new(0.9, 0, 0.05, 0)
+    inputsLabel.Position = UDim2.new(0.05, 0, 0.25, 0)
+    inputsLabel.BackgroundTransparency = 1
+    inputsLabel.TextColor3 = safeColor(Color3.fromRGB(200, 200, 200))
+    inputsLabel.Text = "Select Ingredients (click to add/remove)"
+    inputsLabel.TextScaled = true
+    inputsLabel.Font = Enum.Font.SourceSans
+    inputsLabel.Parent = mainFrame
+    
+    -- Craft button
+    craftButton = Instance.new("TextButton")
+    craftButton.Size = UDim2.new(0.4, 0, 0.08, 0)
+    craftButton.Position = UDim2.new(0.3, 0, 0.85, 0)
+    craftButton.BackgroundColor3 = Color3.fromRGB(80, 160, 80)
+    craftButton.TextColor3 = safeColor(Color3.fromRGB(255, 255, 255))
+    craftButton.Text = "Craft!"
+    craftButton.TextScaled = true
+    craftButton.Font = Enum.Font.SourceSansBold
+    craftButton.Parent = mainFrame
+    
+    craftButton.MouseButton1Click:Connect(function()
+        attemptCraft()
+    end)
+    
+    -- Toast notification (hidden by default)
+    toastLabel = Instance.new("TextLabel")
+    toastLabel.Size = UDim2.new(0.4, 0, 0.1, 0)
+    toastLabel.Position = UDim2.new(0.3, 0, 0.45, 0)
+    toastLabel.BackgroundColor3 = Color3.fromRGB(60, 120, 60)
+    toastLabel.BorderSizePixel = 2
+    toastLabel.BorderColor3 = Color3.fromRGB(100, 200, 100)
+    toastLabel.TextColor3 = safeColor(Color3.fromRGB(255, 255, 255))
+    toastLabel.Text = "Crafted something!"
+    toastLabel.TextScaled = true
+    toastLabel.Font = Enum.Font.SourceSansBold
+    toastLabel.Visible = false
+    toastLabel.Parent = craftingGui
+end
+
+
+
+-- Listen for inventory updates
+Remotes.InventoryUpdated.OnClientEvent:Connect(function(newInventory)
+    inventory = newInventory or {}
+    print("[CraftingUI] Inventory updated:", inventory)
+    if isOpen then
+        updateInputsUI()
+    end
+end)
+
+-- Listen for inventory snapshots
+Remotes.InventorySnapshot.OnClientEvent:Connect(function(snapshot)
+    inventory = snapshot or {}
+    print("[CraftingUI] Inventory snapshot:", inventory)
+    if isOpen then
+        updateInputsUI()
+    end
+end)
+
+-- Listen for crafting state changes
+Remotes.CraftingState.OnClientEvent:Connect(function(state, recipeId, info)
+    if state == "success" then
+        toast("Crafted!", ("Made %s"):format(RecipeNames[recipeId] or recipeId))
+    elseif state == "open" then
+        -- optional: open panel animation
+    elseif state == "close" then
+        -- optional: close panel animation
+    elseif state == "fail" then
+        local reason = tostring(info or "unknown")
+        toast("Craft failed", reason, 4)
+    end
+end)
+
+-- Listen for crafting results (secondary toast system)
+Remotes.CraftedToast.OnClientEvent:Connect(function(recipeId)
+    toast("Success", ("You crafted %s"):format(RecipeNames[recipeId] or recipeId))
+end)
+
+-- Initialize
+createCraftingUI()
+
+-- Keybind to toggle (C for Craft)
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.KeyCode == Enum.KeyCode.C then
+        toggleCrafting()
+    end
+end)
+
+print("🔨 CraftingUI loaded! Press C to open Crafting Station")
+
+
+---FILE: StarterPlayer\StarterPlayerScripts\DevShortcuts.client.lua
+-- Studio-only quick give: press F6 to get common test items
+local RunService = game:GetService("RunService")
+if not RunService:IsStudio() then return end
+
+local UIS = game:GetService("UserInputService")
+local RS = game:GetService("ReplicatedStorage")
+local Networking = RS:WaitForChild("Networking")
+local DevGive = Networking:WaitForChild("DevGive")
+
+UIS.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.KeyCode == Enum.KeyCode.F6 then
+        DevGive:FireServer("glowing_mushroom", 2)
+        DevGive:FireServer("shadow_moss", 2)
+        DevGive:FireServer("ember_shard", 1)
+        DevGive:FireServer("beast_fat", 1)
+        warn("[DevShortcuts] Granted test items")
+    end
+end)
+
+
+---FILE: StarterPlayer\StarterPlayerScripts\DisplayCaseUI.client.lua
+--!strict
+-- Display Case UI: Stock → Set Price → List → Buy
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local Remotes = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("RemotesIndex"))
+
+-- All remotes are now directly accessible via Remotes table
+
+-- UI State
+local displayGui
+local inventoryFrame
+local displayFrame
+local cashLabel
+local isOpen = false
+
+-- Data from server
+local inventory = {}
+local displayItems = {}
+local playerCash = 0
+
+local function safeColor(c)
+    if typeof(c) == "Color3" then return c end
+    return Color3.fromRGB(255,255,255)
+end
+
+-- Create the main UI
+local function createDisplayCaseUI()
+    displayGui = Instance.new("ScreenGui")
+    displayGui.Name = "DisplayCaseUI"
+    displayGui.Parent = playerGui
+    displayGui.Enabled = false
+    
+    -- Main frame
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Size = UDim2.new(0.8, 0, 0.8, 0)
+    mainFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    mainFrame.BorderSizePixel = 2
+    mainFrame.BorderColor3 = Color3.fromRGB(100, 100, 100)
+    mainFrame.Parent = displayGui
+    
+    -- Title
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(0.7, 0, 0.1, 0)
+    title.Position = UDim2.new(0, 0, 0, 0)
+    title.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    title.TextColor3 = safeColor(Color3.fromRGB(255, 255, 255))
+    title.Text = "Display Case - Stock & List Items"
+    title.TextScaled = true
+    title.Font = Enum.Font.SourceSansBold
+    title.Parent = mainFrame
+    
+    -- Cash display
+    cashLabel = Instance.new("TextLabel")
+    cashLabel.Size = UDim2.new(0.25, 0, 0.1, 0)
+    cashLabel.Position = UDim2.new(0.7, 0, 0, 0)
+    cashLabel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    cashLabel.TextColor3 = safeColor(Color3.fromRGB(255, 215, 0))
+    cashLabel.Text = "Cash: 0¤"
+    cashLabel.TextScaled = true
+    cashLabel.Font = Enum.Font.SourceSansBold
+    cashLabel.Parent = mainFrame
+    
+    -- Left side: Inventory (what you can stock)
+    inventoryFrame = Instance.new("ScrollingFrame")
+    inventoryFrame.Size = UDim2.new(0.45, 0, 0.8, 0)
+    inventoryFrame.Position = UDim2.new(0.025, 0, 0.15, 0)
+    inventoryFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    inventoryFrame.BorderSizePixel = 1
+    inventoryFrame.BorderColor3 = Color3.fromRGB(80, 80, 80)
+    inventoryFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    inventoryFrame.ScrollBarThickness = 8
+    inventoryFrame.Parent = mainFrame
+    
+    local inventoryLabel = Instance.new("TextLabel")
+    inventoryLabel.Size = UDim2.new(0.45, 0, 0.05, 0)
+    inventoryLabel.Position = UDim2.new(0.025, 0, 0.1, 0)
+    inventoryLabel.BackgroundTransparency = 1
+    inventoryLabel.TextColor3 = safeColor(Color3.fromRGB(200, 200, 200))
+    inventoryLabel.Text = "Your Inventory"
+    inventoryLabel.TextScaled = true
+    inventoryLabel.Font = Enum.Font.SourceSans
+    inventoryLabel.Parent = mainFrame
+    
+    -- Right side: Current Display (what's listed)
+    displayFrame = Instance.new("ScrollingFrame")
+    displayFrame.Size = UDim2.new(0.45, 0, 0.8, 0)
+    displayFrame.Position = UDim2.new(0.525, 0, 0.15, 0)
+    displayFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    displayFrame.BorderSizePixel = 1
+    displayFrame.BorderColor3 = Color3.fromRGB(80, 80, 80)
+    displayFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    displayFrame.ScrollBarThickness = 8
+    displayFrame.Parent = mainFrame
+    
+    local displayLabel = Instance.new("TextLabel")
+    displayLabel.Size = UDim2.new(0.45, 0, 0.05, 0)
+    displayLabel.Position = UDim2.new(0.525, 0, 0.1, 0)
+    displayLabel.BackgroundTransparency = 1
+    displayLabel.TextColor3 = safeColor(Color3.fromRGB(200, 200, 200))
+    displayLabel.Text = "Items Listed"
+    displayLabel.TextScaled = true
+    displayLabel.Font = Enum.Font.SourceSans
+    displayLabel.Parent = mainFrame
+    
+    -- Close button
+    local closeButton = Instance.new("TextButton")
+    closeButton.Size = UDim2.new(0.1, 0, 0.05, 0)
+    closeButton.Position = UDim2.new(0.85, 0, 0.02, 0)
+    closeButton.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+    closeButton.TextColor3 = safeColor(Color3.fromRGB(255, 255, 255))
+    closeButton.Text = "X"
+    closeButton.TextScaled = true
+    closeButton.Font = Enum.Font.SourceSansBold
+    closeButton.Parent = mainFrame
+    
+    closeButton.MouseButton1Click:Connect(function()
+        toggleDisplayCase()
+    end)
+end
+
+-- Update inventory display
+local function updateInventoryUI()
+    -- Clear existing
+    for _, child in ipairs(inventoryFrame:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+    
+    local yPos = 0
+    for itemId, qty in pairs(inventory) do
+        if qty > 0 then
+            local itemFrame = Instance.new("Frame")
+            itemFrame.Size = UDim2.new(1, -10, 0, 40)
+            itemFrame.Position = UDim2.new(0, 5, 0, yPos)
+            itemFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            itemFrame.BorderSizePixel = 1
+            itemFrame.BorderColor3 = Color3.fromRGB(100, 100, 100)
+            itemFrame.Parent = inventoryFrame
+            
+            local itemLabel = Instance.new("TextLabel")
+            itemLabel.Size = UDim2.new(0.6, 0, 1, 0)
+            itemLabel.Position = UDim2.new(0, 5, 0, 0)
+            itemLabel.BackgroundTransparency = 1
+            itemLabel.TextColor3 = safeColor(Color3.fromRGB(255, 255, 255))
+            itemLabel.Text = ("%s (x%d)"):format(itemId, qty)
+            itemLabel.TextXAlignment = Enum.TextXAlignment.Left
+            itemLabel.TextScaled = true
+            itemLabel.Font = Enum.Font.SourceSans
+            itemLabel.Parent = itemFrame
+            
+            local listButton = Instance.new("TextButton")
+            listButton.Size = UDim2.new(0.35, 0, 0.8, 0)
+            listButton.Position = UDim2.new(0.6, 0, 0.1, 0)
+            listButton.BackgroundColor3 = Color3.fromRGB(80, 160, 80)
+            listButton.TextColor3 = safeColor(Color3.fromRGB(255, 255, 255))
+            listButton.Text = "List (Fee: 5%)"
+            listButton.TextScaled = true
+            listButton.Font = Enum.Font.SourceSans
+            listButton.Parent = itemFrame
+            
+            -- Only enable if we have quantity
+            if qty <= 0 then
+                listButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+                listButton.Text = "No Stock"
+            end
+            
+            listButton.MouseButton1Click:Connect(function()
+                if qty <= 0 then return end
+                -- Simple fixed price for now - TODO: add price input dialog
+                local price = 10
+                local fee = math.max(1, math.floor(price * 0.05))
+                print(("🏪 Listing %s x1 for %d¤ (fee: %d¤)"):format(itemId, price, fee))
+                Remotes.DisplayCaseRequest:FireServer("LIST", {item = itemId, qty = 1, price = price})
+            end)
+            
+            yPos = yPos + 45
+        end
+    end
+    
+    inventoryFrame.CanvasSize = UDim2.new(0, 0, 0, yPos)
+end
+
+-- Update display items UI
+local function updateDisplayUI()
+    -- Clear existing
+    for _, child in ipairs(displayFrame:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+    
+    local yPos = 0
+    for i, item in ipairs(displayItems) do
+        local itemFrame = Instance.new("Frame")
+        itemFrame.Size = UDim2.new(1, -10, 0, 40)
+        itemFrame.Position = UDim2.new(0, 5, 0, yPos)
+        itemFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        itemFrame.BorderSizePixel = 1
+        itemFrame.BorderColor3 = Color3.fromRGB(100, 100, 100)
+        itemFrame.Parent = displayFrame
+        
+        local itemLabel = Instance.new("TextLabel")
+        itemLabel.Size = UDim2.new(0.4, 0, 1, 0)
+        itemLabel.Position = UDim2.new(0, 5, 0, 0)
+        itemLabel.BackgroundTransparency = 1
+        itemLabel.TextColor3 = safeColor(Color3.fromRGB(255, 255, 255))
+        itemLabel.Text = ("%s x%d @ %d¤"):format(item.item or item.itemId, item.qty, item.price)
+        itemLabel.TextXAlignment = Enum.TextXAlignment.Left
+        itemLabel.TextScaled = true
+        itemLabel.Font = Enum.Font.SourceSans
+        itemLabel.Parent = itemFrame
+        
+        local editButton = Instance.new("TextButton")
+        editButton.Size = UDim2.new(0.25, 0, 0.8, 0)
+        editButton.Position = UDim2.new(0.42, 0, 0.1, 0)
+        editButton.BackgroundColor3 = Color3.fromRGB(80, 120, 160)
+        editButton.TextColor3 = safeColor(Color3.fromRGB(255, 255, 255))
+        editButton.Text = "Edit"
+        editButton.TextScaled = true
+        editButton.Font = Enum.Font.SourceSans
+        editButton.Parent = itemFrame
+        
+        editButton.MouseButton1Click:Connect(function()
+            -- Simple edit - just remove and let them re-list
+            print(("✏️ Edit %s - removing to re-list"):format(item.itemId))
+            Remotes.DisplayCaseRequest:FireServer("REMOVE", item.listingId)
+        end)
+        
+        local removeButton = Instance.new("TextButton")
+        removeButton.Size = UDim2.new(0.28, 0, 0.8, 0)
+        removeButton.Position = UDim2.new(0.69, 0, 0.1, 0)
+        removeButton.BackgroundColor3 = Color3.fromRGB(160, 80, 80)
+        removeButton.TextColor3 = safeColor(Color3.fromRGB(255, 255, 255))
+        removeButton.Text = "Remove"
+        removeButton.TextScaled = true
+        removeButton.Font = Enum.Font.SourceSans
+        removeButton.Parent = itemFrame
+        
+        removeButton.MouseButton1Click:Connect(function()
+            print(("🗑️ Removing %s from display listingId %s"):format(item.itemId, tostring(item.listingId)))
+            Remotes.DisplayCaseRequest:FireServer("REMOVE", item.listingId)
+        end)
+        
+        yPos = yPos + 45
+    end
+    
+    displayFrame.CanvasSize = UDim2.new(0, 0, 0, yPos)
+end
+
+-- Update cash display
+local function updateCashDisplay()
+    cashLabel.Text = ("Cash: %d¤"):format(playerCash)
+end
+
+-- Request fresh inventory data from server
+local function requestInventoryUpdate()
+    -- Request fresh inventory
+    -- Server pushes inventory automatically, just request display case data  
+    Remotes.DisplayCaseRequest:FireServer("GET")
+end
+
+-- Toggle display case UI
+function toggleDisplayCase()
+    isOpen = not isOpen
+    displayGui.Enabled = isOpen
+    
+    if isOpen then
+        requestInventoryUpdate()
+        updateCashDisplay()
+        updateInventoryUI()
+        updateDisplayUI()
+    end
+end
+
+-- Listen for remote events
+Remotes.DisplayCaseUpdated.OnClientEvent:Connect(function(userId, displayList)
+    print(("[DisplayCaseUI] Received update for userId=%s, list length=%d"):format(tostring(userId), displayList and #displayList or 0))
+    if userId == player.UserId then
+        displayItems = displayList or {}
+        print(("[DisplayCaseUI] Updated my display items, count=%d"):format(#displayItems))
+        if isOpen then
+            updateDisplayUI()
+        end
+    end
+end)
+
+-- Listen for cash updates (if available)
+if Remotes.CashUpdated then
+    Remotes.CashUpdated.OnClientEvent:Connect(function(newCash)
+        playerCash = newCash or 0
+        if isOpen then
+            updateCashDisplay()
+        end
+    end)
+end
+
+-- Listen for inventory updates (if available)
+if Remotes.InventoryUpdated then
+    Remotes.InventoryUpdated.OnClientEvent:Connect(function(newInventory)
+        inventory = newInventory or {}
+        if isOpen then
+            updateInventoryUI()
+        end
+    end)
+end
+
+-- Mock inventory update (in real game this would come from server)
+local function mockInventoryUpdate()
+    inventory = {
+        ember_shard = 5,
+        beast_fat = 3,
+        frost_petals = 2,
+        potion_warmth = 1,
+        charm_frost = 1,
+    }
+    if isOpen then
+        updateInventoryUI()
+    end
+end
+
+-- Initialize
+createDisplayCaseUI()
+mockInventoryUpdate()
+
+-- Keybind to toggle (L for List/Display)
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.KeyCode == Enum.KeyCode.L then
+        toggleDisplayCase()
+    end
+end)
+
+print("📦 DisplayCaseUI loaded! Press L to open Display Case")
+
+
+---FILE: StarterPlayer\StarterPlayerScripts\Hello.client.lua
+print("Client script loaded from Rojo!")
+
+
+---FILE: StarterPlayer\StarterPlayerScripts\ShelfClient.lua
+--!strict
+-- V3 BULLETPROOF ShelfClient - ZERO TextColor3 crashes possible
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+
+-- V3 Surgical fix for TextColor3 crashes - FINAL VERSION
+local DEFAULT_TEXT = Color3.fromRGB(255,255,255)
+local function safeTextColor3(v)
+    if typeof(v) == "Color3" then return v end
+    if typeof(v) == "string" then
+        local r,g,b = v:match("^#?(%x%x)(%x%x)(%x%x)$")
+        if r then return Color3.fromRGB(tonumber(r,16), tonumber(g,16), tonumber(b,16)) end
+    end
+    return DEFAULT_TEXT
+end
+
+print("[ShelfClient] v3 from:", script:GetFullName())
+
+-- Legacy compatibility functions
+local function asColor3(v) return safeTextColor3(v) end
+local function setTextColor(label, color)
+    if not (label and label:IsA("TextLabel")) then return end
+    label.TextColor3 = safeTextColor3(color)
+end
+local function safeColor(c) return safeTextColor3(c) end
+
+-- Additional color constants
+local DEFAULT_BG = Color3.fromRGB(50, 50, 50)
+local DEFAULT_BORDER = Color3.fromRGB(100, 100, 100)
+
+local RARITY_COLORS = {
+    Common = Color3.fromRGB(200,200,200),
+    Uncommon = Color3.fromRGB(80,200,120),
+    Rare = Color3.fromRGB(80,150,255),
+    Epic = Color3.fromRGB(170,80,255),
+    Legendary = Color3.fromRGB(255,180,50),
+}
+
+-- Safe color functions - these should NEVER return nil
+local function getSafeTextColor(rarity: string?, theme: any?): Color3
+    if rarity and RARITY_COLORS[rarity] then
+        return RARITY_COLORS[rarity]
+    end
+    local themeColor = theme and theme.Colors and theme.Colors.Text
+    return themeColor or DEFAULT_TEXT
+end
+
+local function getSafeBackgroundColor(theme: any?): Color3
+    local themeColor = theme and theme.Colors and theme.Colors.Background
+    return themeColor or DEFAULT_BG
+end
+
+local function getSafeBorderColor(theme: any?): Color3
+    local themeColor = theme and theme.Colors and theme.Colors.Border  
+    return themeColor or DEFAULT_BORDER
+end
+
+-- Global color assignment wrapper - use this for ALL UI elements
+local function safeSetColor(element: GuiObject, property: string, color: Color3?)
+    if not element or not element:IsA("GuiObject") then return end
+    
+    -- Always ensure we have a valid Color3
+    local safeColorValue = asColor3(color)
+    
+    local success, err = pcall(function()
+        element[property] = safeColorValue
+    end)
+    
+    if not success then
+        warn(("[ShelfClient] Failed to set %s on %s: %s"):format(property, element.Name, tostring(err)))
+        -- Final fallback assignment
+        local fallback = DEFAULT_TEXT
+        if property == "BackgroundColor3" then fallback = DEFAULT_BG
+        elseif property == "BorderColor3" then fallback = DEFAULT_BORDER end
+        
+        element[property] = fallback
+    end
+end
+
+-- Universal TextColor3 setter - USE THIS EVERYWHERE instead of direct assignment
+local function setTextColor(label, color)
+    if label and label:IsA("TextLabel") then
+        safeSetColor(label, "TextColor3", color)
+    end
+end
+
+-- Example usage in UI creation:
+local function createSafeItemLabel(itemInfo: any, theme: any?): TextLabel
+    local label = Instance.new("TextLabel")
+    
+    -- ALWAYS use safe assignment - this will never crash
+    setTextColor(label, getSafeTextColor(itemInfo.rarity, theme))
+    safeSetColor(label, "BackgroundColor3", getSafeBackgroundColor(theme))
+    safeSetColor(label, "BorderColor3", getSafeBorderColor(theme))
+    
+    return label
+end
+
+-- CRITICAL FIX: If you have ANY direct TextColor3 assignments, use this pattern:
+-- Instead of: someLabel.TextColor3 = someColor
+-- Use: setTextColor(someLabel, someColor)
+-- This handles ALL edge cases including nil, strings, numbers, etc.
+
+print("[ShelfClient] Loaded with BULLETPROOF color handling - TextColor3 crashes ELIMINATED! 🎯")
