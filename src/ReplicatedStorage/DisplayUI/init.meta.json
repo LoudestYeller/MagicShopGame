@@ -3,6 +3,9 @@
   "properties": {
     "ResetOnSpawn": false,
     "IgnoreGuiInset": true,
-    "Enabled": false
+    "ZIndexBehavior": "Sibling",
+    "DisplayOrder": 10,
+    "Enabled": false,
+    "Name": "DisplayUI"
   }
 }

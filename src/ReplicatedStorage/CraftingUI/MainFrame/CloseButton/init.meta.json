@@ -1,0 +1,18 @@
+{
+  "className": "TextButton",
+  "properties": {
+    "Name": "CloseButton",
+    "Text": "✕",
+    "TextScaled": true,
+    "TextColor3": [1, 1, 1],
+    "BackgroundColor3": [0.2, 0.2, 0.25],
+    "AutoButtonColor": true,
+    "AnchorPoint": [1, 0],
+    "Position": [1, -4, 0, -4],
+    "Size": [0, 28, 0, 28],
+    "BorderSizePixel": 0
+  },
+  "children": {
+    "UICorner": { "className": "UICorner", "properties": { "CornerRadius": [0, 8] } }
+  }
+}

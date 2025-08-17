@@ -3,6 +3,9 @@
   "properties": {
     "ResetOnSpawn": false,
     "IgnoreGuiInset": true,
-    "Enabled": false
+    "ZIndexBehavior": "Sibling",
+    "DisplayOrder": 11,
+    "Enabled": false,
+    "Name": "CraftingUI"
   }
 }
