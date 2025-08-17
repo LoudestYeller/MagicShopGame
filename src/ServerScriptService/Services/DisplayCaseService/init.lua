@@ -1,12 +1,42 @@
+--!strict
+-- Services
 local RS = game:GetService("ReplicatedStorage")
-local Shared = RS:WaitForChild("Shared")
-local Remotes = require(Shared:WaitForChild("RemotesIndex"))
-local Items = require(Shared:WaitForChild("Items"))
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
 
--- Always resolve the *Folder* and its children by WaitForChild
+-- Modules
+local Shared = RS:WaitForChild("Shared")
+local Items = require(Shared:WaitForChild("Items"))
 local CraftingFolder = Shared:WaitForChild("Crafting")
 local IngredientDB = require(CraftingFolder:WaitForChild("IngredientDB"))
 
+-- Core dependencies
+local ServiceLoader = require(script.Parent.Parent.ServiceLoader)
+local DataService = ServiceLoader.requireService("DataService")
+local RemotesService = ServiceLoader.requireService("RemotesService")
+local Remotes = RemotesService
+
+-- Constants
+local MIN_PRICE = 1
+local MIN_QUANTITY = 1
+local MAX_QUANTITY = 999
+local MAX_LISTINGS_PER_PLAYER = 12
+local COOLDOWN = 0.5 -- seconds between actions
+
+-- Rate limiting
+local lastAction = {}
+local function checkRateLimit(player: Player): boolean
+    local now = os.clock()
+    local last = lastAction[player] or 0
+    if now - last < COOLDOWN then
+        warn(("[DisplayCaseService] Rate limit hit for %s"):format(player.Name))
+        return false
+    end
+    lastAction[player] = now
+    return true
+end
+
+-- Utilities
 local function normalizeItemId(v:any): string?
     if not v then return nil end
     v = tostring(v)
@@ -35,186 +65,231 @@ local function normalizeItemId(v:any): string?
     return nil
 end
 
-local ServiceLoader = require(script.Parent.Parent.ServiceLoader)
-local DataService = ServiceLoader.requireService("DataService")
+local function validateListingPayload(payload: any): (boolean, string?)
+    if typeof(payload) ~= "table" then
+        return false, "Payload must be a table"
+    end
+    
+    local rawItem = payload.item or payload.itemId
+    local qty = tonumber(payload.qty)
+    local price = tonumber(payload.price)
+    
+    if type(rawItem) ~= "string" then
+        return false, "Item must be a string"
+    end
+    
+    if not qty or qty < MIN_QUANTITY or qty > MAX_QUANTITY or qty % 1 ~= 0 then
+        return false, ("Quantity must be an integer between %d and %d"):format(MIN_QUANTITY, MAX_QUANTITY)
+    end
+    
+    if not price or price < MIN_PRICE then
+        return false, ("Price must be at least %d"):format(MIN_PRICE)
+    end
+    
+    return true
+end
 
+-- Service
 local DisplayCaseService = {}
-DisplayCaseService.Listings = {} -- { [userId] = { {item="", qty=1, price=10}, ... } }
-
-local HttpService = game:GetService("HttpService")
-local function uid(plr) return plr.UserId end
-
-function DisplayCaseService:SendDisplayCase(player)
-    local listings = self.Listings[player.UserId] or {}
-    Remotes.DisplayCaseUpdated:FireClient(player, player.UserId, listings)
+function DisplayCaseService.GetCase(playerOrUserId)
+    local userId = (typeof(playerOrUserId) == "Instance") and playerOrUserId.UserId or tonumber(playerOrUserId)
+    assert(userId, "[DisplayCaseService] GetCase: need Player or userId")
+    return DataService:GetDisplay(userId)
 end
 
 function DisplayCaseService:GetDisplayCaseData(player)
     return self.Listings[player.UserId] or {}
 end
 
+function DisplayCaseService.Snapshot(playerOrUserId)
+    local userId = (typeof(playerOrUserId) == "Instance") and playerOrUserId.UserId or tonumber(playerOrUserId)
+    local c = caseByUser[userId]
+    return { slots = c and c.slots or {} }
+end
+
+function DisplayCaseService:HandleList(player: Player, payload: any)
+    -- Rate limit check
+    if not checkRateLimit(player) then return end
+    
+    -- Validate payload
+    local ok, err = validateListingPayload(payload)
+    if not ok then
+        warn(("[DisplayCaseService] Invalid LIST payload from %s: %s"):format(player.Name, err))
+        self:SendDisplayCase(player) -- Send current state back
+        return
+    end
+    
+    -- Normalize item ID
+    local rawItem = payload.item or payload.itemId
+    local item = normalizeItemId(rawItem)
+    if not item then
+        warn(("[DisplayCaseService] %s tried to list unknown item: %s"):format(player.Name, tostring(rawItem)))
+        self:SendDisplayCase(player)
+        return
+    end
+    
+    -- Check listing limit
+    local userListings = self.Listings[player.UserId] or {}
+    if #userListings >= MAX_LISTINGS_PER_PLAYER then
+        warn(("[DisplayCaseService] %s hit listing limit (%d)"):format(player.Name, MAX_LISTINGS_PER_PLAYER))
+        self:SendDisplayCase(player)
+        return
+    end
+    
+    -- Verify & consume items
+    local qty = tonumber(payload.qty)
+    if not DataService:HasItems(player, {[item] = qty}) then
+        warn(("[DisplayCaseService] %s doesn't have %s x%d to list"):format(player.Name, item, qty))
+        self:SendDisplayCase(player)
+        return
+    end
+    
+    -- Create listing
+    DataService:ConsumeItems(player, {[item] = qty})
+    self.Listings[player.UserId] = self.Listings[player.UserId] or {}
+    
+    table.insert(self.Listings[player.UserId], {
+        item = item,
+        itemId = item, -- Compatibility
+        qty = qty,
+        price = tonumber(payload.price),
+        listingId = HttpService:GenerateGUID(false)
+    })
+    
+    print(("[DisplayCaseService] %s listed %s x%d for %d¤"):format(
+        player.Name, item, qty, tonumber(payload.price)))
+    
+    self:SendDisplayCase(player)
+end
+
+function DisplayCaseService:HandleRemove(player: Player, listingId: string)
+    -- Rate limit check
+    if not checkRateLimit(player) then return end
+    
+    local userListings = self.Listings[player.UserId]
+    if not userListings then
+        warn("[DisplayCaseService] No listings for user")
+        return
+    end
+    
+    -- Find and validate listing
+    local foundIndex, listing
+    for i, item in ipairs(userListings) do
+        if item.listingId == listingId then
+            foundIndex = i
+            listing = item
+            break
+        end
+    end
+    
+    if not listing then
+        warn("[DisplayCaseService] Listing not found: "..tostring(listingId))
+        return
+    end
+    
+    -- Return items to inventory
+    local itemId = listing.item or listing.itemId
+    local qty = listing.qty or 1
+    local itemName = (Items[itemId] and Items[itemId].name) or itemId
+    
+    DataService:AddItem(player, itemName, qty)
+    table.remove(userListings, foundIndex)
+    
+    print(("[DisplayCaseService] Removed listing %s and returned %s x%d"):format(
+        listingId, tostring(itemName), qty))
+    
+    self:SendDisplayCase(player)
+end
+
+function DisplayCaseService:HandleUpdate(player: Player, listingId: string, newPrice: number?, newQty: number?)
+    -- Rate limit check
+    if not checkRateLimit(player) then return end
+    
+    local userListings = self.Listings[player.UserId]
+    if not userListings then
+        warn("[DisplayCaseService] No listings for user")
+        return
+    end
+    
+    -- Find and validate listing
+    local listing
+    for _, item in ipairs(userListings) do
+        if item.listingId == listingId then
+            listing = item
+            break
+        end
+    end
+    
+    if not listing then
+        warn("[DisplayCaseService] Listing not found: "..tostring(listingId))
+        return
+    end
+    
+    -- Update valid fields
+    if newPrice and newPrice >= MIN_PRICE then
+        listing.price = math.floor(newPrice)
+    end
+    
+    if newQty and newQty >= MIN_QUANTITY and newQty <= MAX_QUANTITY and newQty % 1 == 0 then
+        listing.qty = newQty
+    end
+    
+    print(("[DisplayCaseService] Updated %s -> price=%d qty=%d"):format(
+        listingId, listing.price, listing.qty))
+    
+    self:SendDisplayCase(player)
+end
+
+function DisplayCaseService:HandleToggle(player: Player)
+    -- Rate limit check
+    if not checkRateLimit(player) then return end
+    
+    -- Send toggle event back to client to show/hide UI
+    Remotes.ToggleDisplayCase:FireClient(player)
+end
+
 function DisplayCaseService:Init()
     print("[DisplayCaseService] Init")
+    
+    local DisplayCaseRequest = RemotesService.Get("DisplayCaseRequest")
+    DisplayCaseRequest.OnServerEvent:Connect(function(player, action, payload)
+        if action == "Place" then
+            self:PlaceOnDisplay(player, payload.itemId, payload.qty or 1, payload.price)
+        elseif action == "Take" then
+            self:TakeFromDisplay(player, payload.slotId, payload.qty or 1)
+        end
+    end)
+end
+
+function DisplayCaseService.PlaceOnDisplay(player, itemId, qty, price)
+    print("[DisplayCaseService] Placing", itemId, "x", qty, "for", price)
+    local userId = player.UserId
+    if not DataService:HasItems(player, {[itemId] = qty}) then return end
+    DataService:ConsumeItems(player, {[itemId] = qty})
+
+    local c = self:GetCase(userId)
+    local id = c.nextId
+    c.nextId += 1
+    c.slots[id] = { slotId=id, itemId=itemId, qty=qty, price=price }
+
+    -- Broadcast via DataService to ensure persistence
+    DataService:_broadcastInventory(userId)
+end
+
+function DisplayCaseService:TakeFromDisplay(player, slotId, qty)
+    local userId = player.UserId
+    local c = self:GetCase(userId)
+    local slot = c.slots[slotId]; if not slot then return end
+    local n = math.min(qty, slot.qty)
+    DataService:AddItem(player, slot.itemId, n)
+    slot.qty -= n
+    if slot.qty <= 0 then c.slots[slotId] = nil end
+    -- Broadcast via DataService to ensure persistence
+    DataService:_broadcastInventory(userId)
 end
 
 function DisplayCaseService:Start()
     print("[DisplayCaseService] Start")
-    
-    -- Handle toggle display case (from counter interaction)
-    Remotes.ToggleDisplayCase.OnServerEvent:Connect(function(player)
-        print(("[DisplayCaseService] %s requested toggle display case"):format(player.Name))
-        Remotes.ToggleDisplayCase:FireClient(player)
-    end)
-    
-    -- Handle display case requests
-    Remotes.DisplayCaseRequest.OnServerEvent:Connect(function(player, action, arg1, arg2, arg3)
-        if action == "GET" then
-            -- Send current display case data
-            self:SendDisplayCase(player)
-        elseif action == "LIST" then
-            -- New authoritative listing system with normalization
-            local payload = arg1
-            -- Back-compat: accept legacy (item, qty, price) args
-            if typeof(payload) ~= "table" then
-                local legacyItem, legacyQty, legacyPrice = arg1, arg2, arg3
-                payload = { item = legacyItem, qty = legacyQty, price = legacyPrice }
-            end
-            if typeof(payload) ~= "table" then
-                warn(("[DisplayCaseService] LIST requires payload table from %s"):format(player.Name))
-                return
-            end
-            
-            local rawItem = payload.item or payload.itemId
-            local qty = tonumber(payload.qty) or 1  
-            local price = tonumber(payload.price) or 1
-            if type(rawItem) ~= "string" or type(qty) ~= "number" or type(price) ~= "number" then
-                warn(("[DisplayCaseService] Invalid LIST payload from %s: item=%s, qty=%s, price=%s"):format(
-                    player.Name, tostring(rawItem), tostring(qty), tostring(price)))
-                return
-            end
-
-            -- Normalize item ID to canonical form
-            local item = normalizeItemId(rawItem)
-            if not item then
-                print(("[DisplayCaseService] %s tried to list unknown item: %s"):format(player.Name, tostring(rawItem)))
-                -- Send current listings back (no change)
-                Remotes.DisplayCaseUpdated:FireClient(player, player.UserId, self.Listings[player.UserId] or {})
-                return
-            end
-
-            -- Verify & consume items using canonical ID
-            local ok = DataService:HasItems(player, {[item] = qty})
-            if not ok then
-                print(("[DisplayCaseService] %s doesn't have %s x%d to list"):format(player.Name, item, qty))
-                -- Send current listings back (no change)
-                Remotes.DisplayCaseUpdated:FireClient(player, player.UserId, self.Listings[player.UserId] or {})
-                return
-            end
-
-            DataService:ConsumeItems(player, {[item] = qty})
-
-            local uid = player.UserId
-            self.Listings[uid] = self.Listings[uid] or {}
-            local listingId = HttpService:GenerateGUID(false)
-            
-            -- Canonical listing structure
-            table.insert(self.Listings[uid], {
-                item = item,        -- Canonical field
-                itemId = item,      -- Compatibility field  
-                qty = qty, 
-                price = price,
-                listingId = listingId
-            })
-
-            print(("[DisplayCaseService] %s listed %s x%d for %d¤ (normalized from %s)"):format(player.Name, item, qty, price, rawItem))
-            
-            -- Broadcast new list to the owner
-            Remotes.DisplayCaseUpdated:FireClient(player, uid, self.Listings[uid])
-            
-        elseif action == "REMOVE" then
-            local listingId = arg1
-            print(("[DisplayCaseService] %s requested REMOVE %s"):format(player.Name, tostring(listingId)))
-
-            local userListings = self.Listings[player.UserId]
-            if not userListings then
-                warn("[DisplayCaseService] No listings for user")
-                return
-            end
-
-            -- Find listing by listingId
-            local foundIndex = nil
-            local listing = nil
-            for i, item in ipairs(userListings) do
-                if item.listingId == listingId then
-                    foundIndex = i
-                    listing = item
-                    break
-                end
-            end
-
-            if not listing then
-                warn("[DisplayCaseService] Listing not found: "..tostring(listingId))
-                return
-            end
-
-            -- Return the item(s) to inventory using canonical ID
-            local itemId = listing.item or listing.itemId
-            local qty = listing.qty or 1
-            
-            -- Convert canonical ID to display name for DataService
-            local itemName = (Items[itemId] and Items[itemId].name) or itemId
-            DataService:AddItem(player, itemName, qty)
-
-            -- Remove listing from array
-            table.remove(userListings, foundIndex)
-
-            -- Send fresh list to owner
-            Remotes.DisplayCaseUpdated:FireClient(player, player.UserId, userListings)
-            print(("[DisplayCaseService] Removed listing %s and returned %s x%d"):format(listingId, tostring(itemName), qty))
-            
-        elseif action == "UPDATE" then
-            local listingId, newPrice, newQty = arg1, tonumber(arg2), tonumber(arg3)
-            
-            print(("[DisplayCaseService] %s requested UPDATE %s -> price=%s qty=%s")
-                :format(player.Name, tostring(listingId), tostring(newPrice), tostring(newQty)))
-
-            local userListings = self.Listings[player.UserId]
-            if not userListings then 
-                warn("[DisplayCaseService] No listings for user")
-                return 
-            end
-
-            -- Find listing by listingId
-            local listing = nil
-            for _, item in ipairs(userListings) do
-                if item.listingId == listingId then
-                    listing = item
-                    break
-                end
-            end
-            
-            if not listing then 
-                warn("[DisplayCaseService] Listing not found: "..tostring(listingId))
-                return 
-            end
-
-            -- Basic validation and update
-            if newPrice and (newPrice >= 1) then
-                listing.price = math.floor(newPrice)
-            end
-            if newQty and (newQty >= 1 and newQty % 1 == 0) then
-                listing.qty = newQty
-            end
-
-            -- Push fresh list back to owner
-            Remotes.DisplayCaseUpdated:FireClient(player, player.UserId, userListings)
-            print(("[DisplayCaseService] Updated %s -> price=%d qty=%d")
-                :format(listingId, listing.price, listing.qty))
-                
-        else
-            warn(("[DisplayCaseService] Unknown action '%s' from %s"):format(tostring(action), player.Name))
-        end
-    end)
 end
 
 return DisplayCaseService

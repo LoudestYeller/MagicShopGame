@@ -2,6 +2,18 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+local ServiceLoader = require(ServerScriptService.ServiceLoader)
+
+-- Remote setup
+local remotes = {} -- [name] = RemoteEvent
+local required = {
+    "CashUpdated",
+    "InventorySnapshot",
+    "InventoryUpdated",
+    "DisplayCaseUpdated"
+}
 
 local DataService = {}
 DataService._profiles = {}
@@ -10,21 +22,15 @@ DataService._profilesByUserId = {} -- Key by UserId for reliability
 
 -- Use in-memory storage in Studio, ProfileService in production
 local USE_MEMORY = RunService:IsStudio()
-
 local ProfileService
-if not USE_MEMORY then
-    local ok, mod = pcall(function()
-        return require(script.Parent.Parent:FindFirstChild("Vendor") and script.Parent.Parent.Vendor:FindFirstChild("ProfileService"))
-    end)
-    if ok and mod then
-        ProfileService = mod
-        print("[DataService] Using ProfileService for data persistence")
-    else
-        warn("[DataService] ProfileService not found. Falling back to in-memory storage.")
-        USE_MEMORY = true
+
+local function resolvePlayer(p)
+    if typeof(p) == "Instance" and p:IsA("Player") then return p end
+    if typeof(p) == "number" then return Players:GetPlayerByUserId(p) end
+    if typeof(p) == "string" then
+        return Players:FindFirstChild(p) or Players:GetPlayerByUserId(tonumber(p) or -1)
     end
-else
-    print("[DataService] Studio detected - using in-memory storage")
+    return nil
 end
 
 local DEFAULT = {
@@ -35,7 +41,7 @@ local DEFAULT = {
         stations = { PotionBench = 1, Enchanter = 0, Forge = 0, WandTable = 0 },
     },
     inventory = {}, -- [itemId] = qty
-    display = {},   -- array of {slot:number, itemId:string, qty:number, price:number}
+    display = { slots = {}, nextId = 1 }, -- DisplayCaseService state
     discoveredRecipes = {},
     analytics = {},
 }
@@ -48,10 +54,76 @@ function DataService:_deepCopy(t)
     return c
 end
 
+local function setupRemotes()
+    local RemotesService = ServiceLoader.requireService("RemotesService")
+    if not RemotesService then
+        warn("[DataService] Failed to get RemotesService")
+        return false
+    end
+
+    -- Initialize all required remotes
+    for _, name in ipairs(required) do
+        local remote = RemotesService.Get(name)
+        if not remote then
+            warn("[DataService] Remote not found in RemotesService:", name)
+            return false
+        end
+        remotes[name] = remote
+        print("[DataService] Cached remote:", remote:GetFullName())
+
+        -- Verify remote is a valid RemoteEvent
+        if not remote:IsA("RemoteEvent") then
+            warn("[DataService] Invalid remote type for", name, "-", remote.ClassName)
+            return false
+        end
+    end
+
+    print("[DataService] All remotes set up:", table.concat(required, ", "))
+    return true
+end
+
 function DataService:Init()
     print("[DataService] Init")
-    if ProfileService then
-        self.Store = ProfileService.GetProfileStore("MagicShop/PlayerData_v1", DEFAULT)
+    
+    local RemotesService = ServiceLoader.requireService("RemotesService")
+    if not RemotesService then
+        warn("[DataService] Failed to get RemotesService")
+        return false
+    end
+
+    -- Set up remotes first (needed for inventory broadcasts)
+    local remoteList = table.concat(required, ", ")
+    print("[DataService] Setting up remotes: " .. remoteList)
+    for _, name in ipairs(required) do
+        local remote = RemotesService.Get(name)
+        if not remote then
+            warn("[DataService] Failed to get remote:", name)
+            return false
+        end
+        remotes[name] = remote
+    end
+    print("[DataService] All remotes ready")
+
+    -- Load ProfileService for persistent data
+    if not USE_MEMORY then
+        local ok, mod = pcall(function()
+            return require(ServerScriptService.Vendor.ProfileService)
+        end)
+        if ok and mod then
+            ProfileService = mod
+            self.Store = ProfileService.GetProfileStore("MagicShop/PlayerData_v1", DEFAULT)
+            print("[DataService] Using ProfileService for data persistence")
+        else
+            warn("[DataService] ProfileService not found. Falling back to in-memory storage.")
+            USE_MEMORY = true
+        end
+    else
+        print("[DataService] Studio detected - using in-memory storage")
+    end
+
+    -- Load data for existing players
+    for _, plr in ipairs(Players:GetPlayers()) do
+        self:Load(plr)
     end
 
     Players.PlayerAdded:Connect(function(plr)
@@ -62,10 +134,7 @@ function DataService:Init()
         self:Release(plr)
     end)
     
-    -- Set up remote handlers
-    task.defer(function()
-        self:_setupRemotes()
-    end)
+    return true
 end
 
 function DataService:Start() end
@@ -112,6 +181,15 @@ function DataService:Load(plr: Player)
     return true
 end
 
+function DataService:GetDisplay(plrOrId)
+    local p = self:Get(plrOrId)
+    if not p then return nil end
+    if not p.display then
+        p.display = { slots = {}, nextId = 1 }
+    end
+    return p.display
+end
+
 function DataService:Release(plr: Player)
     if USE_MEMORY then
         self._profiles[plr] = nil
@@ -146,36 +224,28 @@ function DataService:GiveCash(plr: Player, amount: number)
     p.cash = math.max(0, (p.cash or 0) + amount)
     
     -- Broadcast cash update to client
-    local success, Remotes = pcall(function()
-        return require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("RemotesIndex"))
-    end)
-    if success and Remotes then
-        Remotes.CashUpdated:FireClient(plr, p.cash)
+    if remotes.CashUpdated then
+        remotes.CashUpdated:FireClient(plr, p.cash)
     end
 end
 
 -- Add/Remove now accept Player or userId
 function DataService:AddItem(plrOrId, id: string, qty: number)
-    print(("[DataService] AddItem called with arg1: %s (type: %s), arg2: %s (type: %s), arg3: %s"):format(
-        tostring(plrOrId), typeof(plrOrId), 
-        tostring(id), typeof(id),
-        tostring(qty)
-    ))
-    
-    local p = self:Get(plrOrId)
-    local plr = asPlayer(plrOrId)
-    if not p then
-        warn("[DataService] AddItem FAILED - invalid player")
-        return
+    local player = resolvePlayer(plrOrId)
+    if not player then
+        warn(("[DataService] AddItem FAILED - invalid player arg (%s)"):format(typeof(plrOrId)))
+        return false
     end
-    if not plr then
-        warn("[DataService] AddItem FAILED - could not resolve player from:", tostring(plrOrId))
-        return
+    
+    local p = self:Get(player)
+    if not p then
+        warn("[DataService] AddItem FAILED - no data for player:", player.Name)
+        return false
     end
     qty = math.max(1, qty or 1)
     p.inventory[id] = (p.inventory[id] or 0) + qty
-    print(("[DataService] Added %s x%d to %s, now have %d"):format(id, qty, plr.Name, p.inventory[id]))
-    self:_broadcastInventory(plrOrId)
+    print(("[DataService] Added %s x%d to %s, now have %d"):format(id, qty, player.Name, p.inventory[id]))
+    self:_broadcastInventory(player)
 end
 
 function DataService:RemoveItem(plrOrId, id: string, qty: number): boolean
@@ -238,15 +308,25 @@ function DataService:_broadcastInventory(plrOrId)
     local p = self:Get(plrOrId)
     local plr = asPlayer(plrOrId)
     if not p or not plr then return end
-    local success, Remotes = pcall(function()
-        return require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("RemotesIndex"))
-    end)
-    if success and Remotes then
-        Remotes.InventoryUpdated:FireClient(plr, p.inventory)
-        print(("[DataService] Sent inventory to %s: %s"):format(plr.Name, game:GetService("HttpService"):JSONEncode(p.inventory)))
+
+    -- Send inventory update
+    if remotes.InventoryUpdated then
+        remotes.InventoryUpdated:FireClient(plr, p.inventory)
     else
-        warn("[DataService] Failed to broadcast - RemotesIndex not available")
+        warn("[DataService] InventoryUpdated remote missing!")
     end
+
+    -- Send display case update
+    if remotes.DisplayCaseUpdated then
+        if not p.display then
+            p.display = { slots = {}, nextId = 1 }
+        end
+        remotes.DisplayCaseUpdated:FireClient(plr, plr.UserId, p.display)
+    else
+        warn("[DataService] DisplayCaseUpdated remote missing!")
+    end
+
+    print(("[DataService] Sent inventory to %s: %s"):format(plr.Name, game:GetService("HttpService"):JSONEncode(p.inventory)))
 end
 
 -- Get player-specific attunement seed for crafting uniqueness (0..1)
@@ -262,27 +342,5 @@ function DataService:GetAttunementSeed(player)
     end
     return s
 end
-
-function DataService:_setupRemotes()
-    local success, Remotes = pcall(function()
-        return require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("RemotesIndex"))
-    end)
-    if not success then
-        warn("[DataService] Failed to load RemotesIndex, retrying in 1s")
-        task.wait(1)
-        return self:_setupRemotes()
-    end
-    
-    -- Handle RequestInventory requests (using the correct remote name)
-    Remotes.RequestInventory.OnServerEvent:Connect(function(plr)
-        local p = self:Get(plr)
-        if p then
-            Remotes.InventorySnapshot:FireClient(plr, p.inventory)
-            Remotes.CashUpdated:FireClient(plr, p.cash)
-            print(("[DataService] Sent inventory to %s: %s"):format(plr.Name, game:GetService("HttpService"):JSONEncode(p.inventory)))
-        end
-    end)
-end
-
 
 return DataService
