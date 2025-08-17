@@ -6,8 +6,10 @@
       "$className": "ReplicatedStorage",
       "Shared": { "$path": "src/ReplicatedStorage/Shared" },
       "Networking": { "$path": "src/ReplicatedStorage/Networking" },
-      "DisplayUI": { "$path": "src/ReplicatedStorage/DisplayUI" },
-      "CraftingUI": { "$path": "src/ReplicatedStorage/CraftingUI" }
+      "UI": {
+        "DisplayUI": { "$path": "src/ReplicatedStorage/UI/DisplayUI.rbxm" },
+        "CraftingUI": { "$path": "src/ReplicatedStorage/UI/CraftingUI.rbxm" }
+      }
     },
     "ServerScriptService": {
       "$className": "ServerScriptService",
