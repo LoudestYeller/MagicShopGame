@@ -5,10 +5,13 @@
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
       "Shared": { "$path": "src/ReplicatedStorage/Shared" },
-      "Networking": { "$path": "src/ReplicatedStorage/Networking" }
+      "Networking": { "$path": "src/ReplicatedStorage/Networking" },
+      "DisplayUI": { "$path": "src/ReplicatedStorage/DisplayUI" },
+      "CraftingUI": { "$path": "src/ReplicatedStorage/CraftingUI" }
     },
     "ServerScriptService": {
       "$className": "ServerScriptService",
+      "Binders": { "$path": "src/ServerScriptService/Binders" },
       "ServerMain": { "$path": "src/ServerScriptService/ServerMain.server.lua" },
       "ServiceLoader": { "$path": "src/ServerScriptService/ServiceLoader.lua" },
       "Health": { "$path": "src/ServerScriptService/Health.server.lua" },
