@@ -1,72 +1,79 @@
--- UIBootstrap.client.lua
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+-- UIBootstrap: ensures DisplayUI and CraftingUI exist in ReplicatedStorage,
+-- then mounts clones (disabled) into PlayerGui.
+local RS = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
-
 local player = Players.LocalPlayer
 local pg = player:WaitForChild("PlayerGui")
 
-local function ensureUi(name: string, title: string, hint: string)
-    local ui = ReplicatedStorage:FindFirstChild(name)
-    if not ui or not ui:IsA("ScreenGui") then
-        print(("[UIBootstrap] %s missing; creating simple fallback"):format(name))
-        ui = Instance.new("ScreenGui")
-        ui.Name = name
-        ui.IgnoreGuiInset = true
-        ui.ResetOnSpawn = false
-        ui.Enabled = false
-
-        local frame = Instance.new("Frame")
-        frame.Name = "MainFrame"
-        frame.AnchorPoint = Vector2.new(0.5, 0.5)
-        frame.Position = UDim2.fromScale(0.5, 0.5)
-        frame.Size = UDim2.fromOffset(560, 380)
-        frame.BackgroundColor3 = Color3.fromRGB(26, 26, 31)
-        frame.Parent = ui
-
-        local header = Instance.new("TextLabel")
-        header.Name = "Header"
-        header.Size = UDim2.new(1, 0, 0, 36)
-        header.BackgroundTransparency = 1
-        header.Text = title
-        header.TextColor3 = Color3.new(1, 1, 1)
-        header.Font = Enum.Font.GothamBold
-        header.TextScaled = true
-        header.Parent = frame
-
-        local close = Instance.new("TextButton")
-        close.Name = "CloseButton"
-        close.Text = "✕"
-        close.AnchorPoint = Vector2.new(1, 0)
-        close.Position = UDim2.new(1, -4, 0, -4)
-        close.Size = UDim2.fromOffset(28, 28)
-        close.BackgroundColor3 = Color3.fromRGB(51, 51, 64)
-        close.TextColor3 = Color3.new(1, 1, 1)
-        close.AutoButtonColor = true
-        close.Parent = frame
-        close.Activated:Connect(function() ui.Enabled = false end)
-
-        local hintLbl = Instance.new("TextLabel")
-        hintLbl.Name = "Hint"
-        hintLbl.BackgroundTransparency = 1
-        hintLbl.Position = UDim2.fromOffset(4, 44)
-        hintLbl.Size = UDim2.new(1, -8, 1, -56)
-        hintLbl.TextWrapped = true
-        hintLbl.Text = hint
-        hintLbl.TextColor3 = Color3.fromRGB(217, 217, 230)
-        hintLbl.Parent = frame
-
-        -- parent to RS so binder + other scripts find it in the usual spot
-        ui.Parent = ReplicatedStorage
+local function ensureFolder(parent, name)
+    local f = parent:FindFirstChild(name)
+    if not f then
+        f = Instance.new("Folder")
+        f.Name = name
+        f.Parent = parent
     end
-
-    if not pg:FindFirstChild(name) then
-        local clone = ui:Clone()
-        clone.Parent = pg
-        print(("[UIBootstrap] Mounted %s (Enabled=%s)"):format(name, tostring(clone.Enabled)))
-    end
+    return f
 end
 
-ensureUi("DisplayUI", "Display Case", "Press L to toggle • Items you place on display will appear here.")
-ensureUi("CraftingUI", "Crafting", "Press C to toggle • Use a bench to access full crafting.")
+local function tryRequire(moduleScript)
+    local ok, mod = pcall(require, moduleScript)
+    if ok then return mod end
+    warn(("[UIBootstrap] require failed for %s: %s"):format(moduleScript:GetFullName(), tostring(mod)))
+    return nil
+end
 
+local function buildViaModule(screenName, moduleName)
+    local uiFolder = ensureFolder(ensureFolder(RS, "Modules"), "UI")
+    local maker = uiFolder:FindFirstChild(moduleName)
+    if maker and maker:IsA("ModuleScript") then
+        local make = tryRequire(maker)
+        if typeof(make) == "function" then
+            local gui = make()
+            if gui and gui:IsA("ScreenGui") then
+                gui.Name = screenName
+                gui.Parent = RS -- canonical copy
+                print(("[UIBootstrap] Built %s from %s"):format(screenName, moduleName))
+                return gui
+            end
+        end
+    end
+    return nil
+end
+
+local function getOrCreate(screenName, makerModule)
+    local existing = RS:FindFirstChild(screenName)
+    if existing and existing:IsA("ScreenGui") then
+        return existing
+    end
+    local built = buildViaModule(screenName, makerModule)
+    if built then return built end
+
+    -- Should not happen after we add prefab modules, but keep a safe fallback.
+    warn(("[UIBootstrap] %s missing; creating minimal fallback"):format(screenName))
+    local sg = Instance.new("ScreenGui")
+    sg.Name = screenName
+    sg.Parent = RS
+    return sg
+end
+
+local function mountToPlayerGui(screenName, makerModule)
+    local src = getOrCreate(screenName, makerModule)
+    local clone = src:Clone()
+    clone.Enabled = false
+    clone.Parent = pg
+
+    -- wire close buttons if present
+    local close = clone:FindFirstChild("CloseButton", true)
+    if close and close:IsA("TextButton") then
+        close.MouseButton1Click:Connect(function()
+            clone.Enabled = false
+        end)
+    end
+
+    print(("[UIBootstrap] Mounted %s (Enabled=false)"):format(screenName))
+    return clone
+end
+
+mountToPlayerGui("DisplayUI", "MakeDisplayUI")
+mountToPlayerGui("CraftingUI", "MakeCraftingUI")
 print("🎮 [UIBootstrap] UI setup complete")
