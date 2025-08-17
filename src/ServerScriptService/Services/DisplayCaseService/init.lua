@@ -272,8 +272,8 @@ function DisplayCaseService.PlaceOnDisplay(player, itemId, qty, price)
     c.nextId += 1
     c.slots[id] = { slotId=id, itemId=itemId, qty=qty, price=price }
 
-    -- Broadcast via DataService to ensure persistence
-    DataService:_broadcastInventory(userId)
+    -- Notify the owner's client that display changed
+    DataService:BroadcastDisplay(player)
 end
 
 function DisplayCaseService:TakeFromDisplay(player, slotId, qty)
@@ -284,8 +284,8 @@ function DisplayCaseService:TakeFromDisplay(player, slotId, qty)
     DataService:AddItem(player, slot.itemId, n)
     slot.qty -= n
     if slot.qty <= 0 then c.slots[slotId] = nil end
-    -- Broadcast via DataService to ensure persistence
-    DataService:_broadcastInventory(userId)
+    -- Notify the owner's client that display changed
+    DataService:BroadcastDisplay(player)
 end
 
 function DisplayCaseService:Start()

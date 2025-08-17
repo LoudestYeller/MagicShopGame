@@ -190,6 +190,41 @@ function DataService:GetDisplay(plrOrId)
     return p.display
 end
 
+-- Public: broadcast the owner's display case data to their client
+function DataService:BroadcastDisplay(plrOrId)
+    local Players = game:GetService("Players")
+    local player, userId
+    if typeof(plrOrId) == "Instance" then
+        player = plrOrId
+        userId = player.UserId
+    else
+        userId = tonumber(plrOrId)
+        if userId then
+            player = Players:GetPlayerByUserId(userId)
+        end
+    end
+    if not userId then
+        warn("[DataService] BroadcastDisplay: missing userId")
+        return false
+    end
+    local p = self:Get(userId)
+    if not p then
+        warn(("[DataService] BroadcastDisplay: no profile for userId=%s"):format(tostring(userId)))
+        return false
+    end
+    if not p.display then
+        p.display = { slots = {}, nextId = 1 }
+    end
+    local remotes = self._remotes
+    if remotes and remotes.DisplayCaseUpdated and player then
+        remotes.DisplayCaseUpdated:FireClient(player, userId, p.display)
+        return true
+    else
+        warn("[DataService] BroadcastDisplay: DisplayCaseUpdated remote missing or player offline")
+        return false
+    end
+end
+
 function DataService:Release(plr: Player)
     if USE_MEMORY then
         self._profiles[plr] = nil
