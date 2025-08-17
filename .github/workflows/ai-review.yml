@@ -4,6 +4,10 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   review:
     if: ${{ !github.event.pull_request.draft }}
@@ -47,6 +51,7 @@ PY
           curl -sS https://api.openai.com/v1/chat/completions \
             -H "Authorization: Bearer $OPENAI_API_KEY" \
             -H "Content-Type: application/json" \
+            --retry 3 --retry-delay 2 --retry-all-errors \
             -d @payload.json > review.json
           jq -r '.choices[0].message.content // "No content"' review.json > review.md
 
