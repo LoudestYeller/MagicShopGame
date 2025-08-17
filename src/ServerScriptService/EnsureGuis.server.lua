@@ -4,17 +4,17 @@ local RS = game:GetService("ReplicatedStorage")
 local REQUIRED = { "DisplayUI", "CraftingUI" }
 
 local function ensureGui(name: string)
-    -- If a proper ScreenGui already exists, keep it.
+    -- Already a proper ScreenGui?
     local existing = RS:FindFirstChild(name)
     if existing and existing:IsA("ScreenGui") then
         return existing
     end
-    -- If something with that name exists but isn't a ScreenGui, replace it.
+    -- If something else with that name exists, replace it.
     if existing then
         existing:Destroy()
     end
 
-    -- Create a minimal placeholder so binders/UIBootstrap never fail.
+    -- Create a minimal placeholder so UIBootstrap/Binders never fail.
     local screen = Instance.new("ScreenGui")
     screen.Name = name
     screen.ResetOnSpawn = false
