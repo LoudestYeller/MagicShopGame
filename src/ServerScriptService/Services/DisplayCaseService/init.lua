@@ -294,28 +294,30 @@ function DisplayCaseService:Start()
     print("[DisplayCaseService] Start")
 
     -- Handle client requests for display actions
-    if Remotes and Remotes:FindFirstChild("DisplayCaseRequest") then
-        Remotes.DisplayCaseRequest.OnServerEvent:Connect(function(player, action, ...)
-            print(string.format("[DisplayCaseService] %s -> DisplayCaseRequest action=%s", player.Name, tostring(action)))
-            if action == "PutOnDisplay" then
-                local itemId, qty, price = ...
-                print(string.format("[DisplayCaseService] PutOnDisplay item=%s qty=%s price=%s", tostring(itemId), tostring(qty), tostring(price)))
-                self:PutOnDisplay(player, itemId, qty, price)
-                -- broadcast immediately
-                Remotes.DisplayCaseUpdated:FireClient(player, player.UserId, self.Snapshot(player.UserId))
-            elseif action == "TakeFromDisplay" then
-                local slotId, qty = ...
-                print(string.format("[DisplayCaseService] TakeFromDisplay slotId=%s qty=%s", tostring(slotId), tostring(qty)))
-                self:TakeFromDisplay(player, slotId, qty)
-                -- broadcast immediately
-                Remotes.DisplayCaseUpdated:FireClient(player, player.UserId, self.Snapshot(player.UserId))
-            else
-                warn("[DisplayCaseService] Unknown DisplayCaseRequest action:", action)
-            end
-        end)
-    else
+    local DisplayCaseRequest = RemotesService:Get("DisplayCaseRequest")
+    if not DisplayCaseRequest then
         warn("[DisplayCaseService] DisplayCaseRequest remote not found")
+        return
     end
+
+    DisplayCaseRequest.OnServerEvent:Connect(function(player, action, ...)
+        print(string.format("[DisplayCaseService] %s -> DisplayCaseRequest action=%s", player.Name, tostring(action)))
+        if action == "PutOnDisplay" then
+            local itemId, qty, price = ...
+            print(string.format("[DisplayCaseService] PutOnDisplay item=%s qty=%s price=%s", tostring(itemId), tostring(qty), tostring(price)))
+            self:PutOnDisplay(player, itemId, qty, price)
+            -- broadcast display update
+            DataService:_broadcastDisplay(player.UserId)
+        elseif action == "TakeFromDisplay" then
+            local slotId, qty = ...
+            print(string.format("[DisplayCaseService] TakeFromDisplay slotId=%s qty=%s", tostring(slotId), tostring(qty)))
+            self:TakeFromDisplay(player, slotId, qty)
+            -- broadcast display update
+            DataService:_broadcastDisplay(player.UserId)
+        else
+            warn("[DisplayCaseService] Unknown DisplayCaseRequest action:", action)
+        end
+    end)
 end
 
 return DisplayCaseService

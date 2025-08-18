@@ -2,36 +2,52 @@
 local RunService = game:GetService("RunService")
 if not RunService:IsStudio() then return end
 
-local UIS = game:GetService("UserInputService")
-local RS = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+if not RunService:IsStudio() then return end
 
-print("[DevHotkeys] Setting up dev keys...")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 
--- Get remotes
-local Networking = RS:WaitForChild("Networking", 30)
-if not Networking then
-    warn("[DevHotkeys] Failed to find Networking folder")
-    return
+local Networking = ReplicatedStorage:WaitForChild("Networking")
+local Remotes = {
+    DisplayCaseRequest = Networking:WaitForChild("DisplayCaseRequest"),
+    InventorySnapshot  = Networking:WaitForChild("InventorySnapshot"),
+    InventoryUpdated   = Networking:WaitForChild("InventoryUpdated"),
+    Dev_Grant = Networking:WaitForChild("Dev_Grant"),
+    Dev_NPCBuy = Networking:WaitForChild("Dev_NPCBuy"),
+    Dev_Give = Networking:WaitForChild("DevGive")
+}
+
+-- keep a local copy of the player's inventory
+local inventory = {}
+
+Remotes.InventorySnapshot.OnClientEvent:Connect(function(full)
+    -- full is a map like {["Glowing Mushroom"]=1, ...}
+    inventory = full or {}
+end)
+
+Remotes.InventoryUpdated.OnClientEvent:Connect(function(itemId, _delta, newQty)
+    inventory[itemId] = newQty
+    if newQty == 0 then inventory[itemId] = nil end
+end)
+
+local function pickFirstOwnedItem()
+    for itemId, qty in pairs(inventory) do
+        if qty and qty > 0 then
+            return itemId, 1
+        end
+    end
 end
 
-local function getRemote(name)
-    local remote = Networking:WaitForChild(name, 30)
-    if not remote then
-        warn("[DevHotkeys] Failed to find remote:", name)
+local function placeOneOnDisplay()
+    local itemId, qty = pickFirstOwnedItem()
+    if not itemId then
+        warn("[DevHotkeys] No items in inventory to place")
         return
     end
-    print("[DevHotkeys] Found remote:", name)
-    return remote
-end
-
-local Dev_Grant = getRemote("Dev_Grant")
-local Dev_Place = getRemote("Dev_Place")
-local Dev_NPCBuy = getRemote("Dev_NPCBuy")
-local Dev_Give = getRemote("DevGive")
-
-if not (Dev_Grant and Dev_Place and Dev_NPCBuy) then
-    warn("[DevHotkeys] Missing required remotes")
-    return
+    local price = 10
+    print(("[DevHotkeys] Placing %s x%d for %d"):format(itemId, qty, price))
+    Remotes.DisplayCaseRequest:FireServer("PutOnDisplay", itemId, qty, price)
 end
 
 print("[DevHotkeys] Registering dev keys:")
@@ -40,55 +56,25 @@ print("  P = place potion on display")
 print("  B = trigger NPC buy")
 print("  F6 = give test items")
 
-UIS.InputBegan:Connect(function(io, gp)
+UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     
-    if io.KeyCode == Enum.KeyCode.G then
-        Dev_Grant:FireServer()
+    if input.KeyCode == Enum.KeyCode.G then
+        Remotes.Dev_Grant:FireServer()
         print("[DevHotkeys] Granting materials...")
     
-    elseif io.KeyCode == Enum.KeyCode.P then
-        print("[DevHotkeys] Placing item on display...")
-        
-        local DisplayCaseRequest = getRemote("DisplayCaseRequest")
-        local InventorySnapshot = getRemote("InventorySnapshot")
-        if not (DisplayCaseRequest and InventorySnapshot) then return end
-
-        -- Find first available item in inventory
-        local ok, invOrErr = pcall(function()
-            return InventorySnapshot:InvokeServer()
-        end)
-        if not ok then
-            warn("[DevHotkeys] InventorySnapshot failed:", invOrErr)
-            return
-        end
-
-        local itemId
-        for id, qty in pairs(invOrErr or {}) do
-            local n = tonumber(qty) or (type(qty) == "table" and tonumber(qty.qty))
-            if n and n > 0 then
-                itemId = id
-                break
-            end
-        end
-
-        if not itemId then
-            warn("[DevHotkeys] No items in inventory to place.")
-            return
-        end
-
-        -- Tell the server to put this on display
-        DisplayCaseRequest:FireServer("PutOnDisplay", itemId, 1, 10)
+    elseif input.KeyCode == Enum.KeyCode.P then
+        placeOneOnDisplay()
     
-    elseif io.KeyCode == Enum.KeyCode.B then
-        Dev_NPCBuy:FireServer(75)
+    elseif input.KeyCode == Enum.KeyCode.B then
+        Remotes.Dev_NPCBuy:FireServer(75)
         print("[DevHotkeys] Triggering NPC buy...")
     
-    elseif io.KeyCode == Enum.KeyCode.F6 and Dev_Give then
-        Dev_Give:FireServer("glowing_mushroom", 2)
-        Dev_Give:FireServer("shadow_moss", 2)
-        Dev_Give:FireServer("ember_shard", 1)
-        Dev_Give:FireServer("beast_fat", 1)
+    elseif input.KeyCode == Enum.KeyCode.F6 and Remotes.Dev_Give then
+        Remotes.Dev_Give:FireServer("glowing_mushroom", 2)
+        Remotes.Dev_Give:FireServer("shadow_moss", 2)
+        Remotes.Dev_Give:FireServer("ember_shard", 1)
+        Remotes.Dev_Give:FireServer("beast_fat", 1)
         print("[DevHotkeys] Granted test items")
     end
 end)

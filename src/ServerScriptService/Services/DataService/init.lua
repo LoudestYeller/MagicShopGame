@@ -339,6 +339,22 @@ function DataService:ConsumeItems(plrOrId, items: {[string]: number}): boolean
 end
 
 -- Helper to broadcast inventory to client
+function DataService:_broadcastDisplay(userId)
+    local Players = game:GetService("Players")
+    local plr = Players:GetPlayerByUserId(userId)
+    if not plr then return end
+
+    local profile = self:Get(userId)
+    if not profile then return end
+    profile.display = profile.display or { slots = {}, nextId = 1 }
+
+    if remotes.DisplayCaseUpdated then
+        remotes.DisplayCaseUpdated:FireClient(plr, userId, profile.display)
+    else
+        warn("[DataService] DisplayCaseUpdated remote missing!")
+    end
+end
+
 function DataService:_broadcastInventory(plrOrId)
     local p = self:Get(plrOrId)
     local plr = asPlayer(plrOrId)
@@ -349,16 +365,6 @@ function DataService:_broadcastInventory(plrOrId)
         remotes.InventoryUpdated:FireClient(plr, p.inventory)
     else
         warn("[DataService] InventoryUpdated remote missing!")
-    end
-
-    -- Send display case update
-    if remotes.DisplayCaseUpdated then
-        if not p.display then
-            p.display = { slots = {}, nextId = 1 }
-        end
-        remotes.DisplayCaseUpdated:FireClient(plr, plr.UserId, p.display)
-    else
-        warn("[DataService] DisplayCaseUpdated remote missing!")
     end
 
     print(("[DataService] Sent inventory to %s: %s"):format(plr.Name, game:GetService("HttpService"):JSONEncode(p.inventory)))
