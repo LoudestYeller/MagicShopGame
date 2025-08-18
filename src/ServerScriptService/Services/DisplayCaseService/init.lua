@@ -272,8 +272,9 @@ function DisplayCaseService.PlaceOnDisplay(player, itemId, qty, price)
     c.nextId += 1
     c.slots[id] = { slotId=id, itemId=itemId, qty=qty, price=price }
 
-    -- Notify the owner's client that display changed
-    DataService:BroadcastDisplay(player)
+    print(string.format("[DisplayCaseService] Case now has %d slots for user %d", (function(tbl) local n=0 for _ in pairs(tbl) do n+=1 end return n end)(c.slots), userId))
+    -- broadcast directly to ensure UI updates
+    Remotes.DisplayCaseUpdated:FireClient(player, userId, self.Snapshot(userId))
 end
 
 function DisplayCaseService:TakeFromDisplay(player, slotId, qty)
@@ -284,12 +285,37 @@ function DisplayCaseService:TakeFromDisplay(player, slotId, qty)
     DataService:AddItem(player, slot.itemId, n)
     slot.qty -= n
     if slot.qty <= 0 then c.slots[slotId] = nil end
-    -- Notify the owner's client that display changed
-    DataService:BroadcastDisplay(player)
+    print(string.format("[DisplayCaseService] Removed/updated slot %s for user %d; remaining qty=%s", tostring(slotId), userId, tostring(slot and slot.qty)))
+    -- broadcast directly to ensure UI updates
+    Remotes.DisplayCaseUpdated:FireClient(player, userId, self.Snapshot(userId))
 end
 
 function DisplayCaseService:Start()
     print("[DisplayCaseService] Start")
+
+    -- Handle client requests for display actions
+    if Remotes and Remotes:FindFirstChild("DisplayCaseRequest") then
+        Remotes.DisplayCaseRequest.OnServerEvent:Connect(function(player, action, ...)
+            print(string.format("[DisplayCaseService] %s -> DisplayCaseRequest action=%s", player.Name, tostring(action)))
+            if action == "PutOnDisplay" then
+                local itemId, qty, price = ...
+                print(string.format("[DisplayCaseService] PutOnDisplay item=%s qty=%s price=%s", tostring(itemId), tostring(qty), tostring(price)))
+                self:PutOnDisplay(player, itemId, qty, price)
+                -- broadcast immediately
+                Remotes.DisplayCaseUpdated:FireClient(player, player.UserId, self.Snapshot(player.UserId))
+            elseif action == "TakeFromDisplay" then
+                local slotId, qty = ...
+                print(string.format("[DisplayCaseService] TakeFromDisplay slotId=%s qty=%s", tostring(slotId), tostring(qty)))
+                self:TakeFromDisplay(player, slotId, qty)
+                -- broadcast immediately
+                Remotes.DisplayCaseUpdated:FireClient(player, player.UserId, self.Snapshot(player.UserId))
+            else
+                warn("[DisplayCaseService] Unknown DisplayCaseRequest action:", action)
+            end
+        end)
+    else
+        warn("[DisplayCaseService] DisplayCaseRequest remote not found")
+    end
 end
 
 return DisplayCaseService
