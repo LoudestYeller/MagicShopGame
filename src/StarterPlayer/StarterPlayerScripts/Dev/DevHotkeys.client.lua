@@ -3,13 +3,24 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 if not RunService:IsStudio() then return end
 
-local Networking = ReplicatedStorage:WaitForChild("Networking")
-local remotes = {
-    DisplayCaseRequest = Networking:WaitForChild("DisplayCaseRequest"),
-    InventorySnapshot = Networking:WaitForChild("InventorySnapshot"),
-    InventoryUpdated = Networking:WaitForChild("InventoryUpdated"),
-    DevGive = Networking:WaitForChild("DevGive")
-}
+local function getRemote(name, expectedClass) -- expectedClass: "RemoteEvent" or "RemoteFunction"
+    local Networking = ReplicatedStorage:WaitForChild("Networking")
+    -- recursive search (handles nested folders)
+    local r = Networking:FindFirstChild(name, true)
+    if not r then
+        error(("[DevHotkeys] Remote '%s' not found under ReplicatedStorage.Networking"):format(name))
+    end
+    if expectedClass and not r:IsA(expectedClass) then
+        error(("[DevHotkeys] Remote '%s' expected %s but is %s"):format(name, expectedClass, r.ClassName))
+    end
+    return r
+end
+
+-- ✨ Use it for every remote you wire up:
+local InventorySnapshot = getRemote("InventorySnapshot", "RemoteEvent")
+local InventoryUpdated  = getRemote("InventoryUpdated",  "RemoteEvent")
+local DisplayCaseRequest = getRemote("DisplayCaseRequest", "RemoteEvent")
+local DevGive           = getRemote("DevGive", "RemoteEvent")
 
 -- inventory cache
 local inventory = {}
@@ -75,8 +86,8 @@ end)
 
 local function grant()
     print("[DevHotkeys] Granting materials...")
-    remotes.DevGive:FireServer("ember_shard", 3)
-    remotes.DevGive:FireServer("beast_fat", 3)
+    DevGive:FireServer("ember_shard", 3)
+    DevGive:FireServer("beast_fat", 3)
 end
 
 local function pickFirstOwnedItem()
@@ -95,7 +106,7 @@ local function placeOneOnDisplay()
     end
     local price = 10
     print(("[DevHotkeys] Placing %s x%d @%d"):format(itemId, qty, price))
-    remotes.DisplayCaseRequest:FireServer("PutOnDisplay", itemId, qty, price)
+    DisplayCaseRequest:FireServer("PutOnDisplay", itemId, qty, price)
 end
 
 -- Hotkeys
