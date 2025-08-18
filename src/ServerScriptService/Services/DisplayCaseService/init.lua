@@ -1,20 +1,18 @@
 --!strict
 -- Services
-local RS = game:GetService("ReplicatedStorage")
-local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
 
 -- Modules
-local Shared = RS:WaitForChild("Shared")
+local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Items = require(Shared:WaitForChild("Items"))
 local CraftingFolder = Shared:WaitForChild("Crafting")
 local IngredientDB = require(CraftingFolder:WaitForChild("IngredientDB"))
 
 -- Core dependencies
-local ServiceLoader = require(script.Parent.Parent.ServiceLoader)
-local DataService = ServiceLoader.requireService("DataService")
-local RemotesService = ServiceLoader.requireService("RemotesService")
-local Remotes = RemotesService
+local RemotesService = require(script.Parent.Parent.RemotesService)
+local DataService = require(script.Parent.Parent.DataService)
 
 -- Constants
 local MIN_PRICE = 1
@@ -291,14 +289,11 @@ end
 function DisplayCaseService:Start()
     print("[DisplayCaseService] Start")
 
-        local DisplayCaseRequest = RemotesService:Get("DisplayCaseRequest")
+    -- ✅ Get each Remote by NAME (string)
+    local DisplayCaseRequest = RemotesService:Get("DisplayCaseRequest")
     local DisplayCaseUpdated = RemotesService:Get("DisplayCaseUpdated")
-    
-    if not DisplayCaseRequest then
-        warn("[DisplayCaseService] DisplayCaseRequest remote not found")
-        return
-    end
 
+    -- Hook server handler once Start succeeds
     DisplayCaseRequest.OnServerEvent:Connect(function(player, action, ...)
         if action == "PutOnDisplay" then
             self:PutOnDisplay(player, ...)
