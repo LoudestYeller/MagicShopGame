@@ -291,11 +291,16 @@ end
 function DisplayCaseService:Start()
     print("[DisplayCaseService] Start")
 
-    -- get remotes by NAME (string)
-    local DisplayCaseRequest = RemotesService:Get("DisplayCaseRequest")
+    -- Get remotes by name
+    self._DisplayCaseRequest = RemotesService:Get("DisplayCaseRequest")
     self._DisplayCaseUpdated = RemotesService:Get("DisplayCaseUpdated")
 
-    DisplayCaseRequest.OnServerEvent:Connect(function(player, action, ...)
+    if not self._DisplayCaseRequest then
+        warn("[DisplayCaseService] DisplayCaseRequest remote not found")
+        return
+    end
+
+    self._DisplayCaseRequest.OnServerEvent:Connect(function(player, action, ...)
         if action == "PutOnDisplay" then
             self:PutOnDisplay(player, ...)
         elseif action == "TakeFromDisplay" then

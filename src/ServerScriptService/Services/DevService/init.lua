@@ -16,6 +16,10 @@ DevGive.OnServerEvent:Connect(function(player, itemId: string, qty: number)
         warn("[DevGive] Invalid player:", tostring(player))
         return
     end
+    if not itemId then
+        warn("[DevGive] Missing itemId")
+        return
+    end
     qty = math.max(1, qty or 1)
     local function s(x)
         if typeof(x) == "Instance" then return x.Name end

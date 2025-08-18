@@ -27,7 +27,8 @@ end
 
 function Service:AttemptAutoPurchase(player, npcBudget)
     if not self.Display then return false end
-    local case = self.Display:GetCase(player)
+    if not player or not player.UserId then return false end
+    local case = self.Display:GetCase(player.UserId)
     local best
     local bestValue = -math.huge
 
