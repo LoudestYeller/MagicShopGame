@@ -1,5 +1,7 @@
 --!strict
 -- Services
+-- Correct, folder-agnostic requires
+local ServicesFolder = script:FindFirstAncestor("Services") or script.Parent
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
@@ -11,8 +13,8 @@ local CraftingFolder = Shared:WaitForChild("Crafting")
 local IngredientDB = require(CraftingFolder:WaitForChild("IngredientDB"))
 
 -- Core dependencies
-local RemotesService = require(script.Parent.Parent.RemotesService)
-local DataService = require(script.Parent.Parent.DataService)
+local RemotesService = require(ServicesFolder:WaitForChild("RemotesService"))
+local DataService = require(ServicesFolder:WaitForChild("DataService"))
 
 -- Constants
 local MIN_PRICE = 1
@@ -289,11 +291,10 @@ end
 function DisplayCaseService:Start()
     print("[DisplayCaseService] Start")
 
-    -- ✅ Get each Remote by NAME (string)
+    -- get remotes by NAME (string)
     local DisplayCaseRequest = RemotesService:Get("DisplayCaseRequest")
-    local DisplayCaseUpdated = RemotesService:Get("DisplayCaseUpdated")
+    self._DisplayCaseUpdated = RemotesService:Get("DisplayCaseUpdated")
 
-    -- Hook server handler once Start succeeds
     DisplayCaseRequest.OnServerEvent:Connect(function(player, action, ...)
         if action == "PutOnDisplay" then
             self:PutOnDisplay(player, ...)
@@ -303,6 +304,15 @@ function DisplayCaseService:Start()
             warn("[DisplayCaseService] Unknown action:", action)
         end
     end)
+end
+
+function DisplayCaseService:_broadcastDisplay(userId)
+    local plr = Players:GetPlayerByUserId(userId)
+    if not plr then return end
+    local p = DataService:Get(userId)
+    if not p then return end
+    p.display = p.display or { slots = {}, nextId = 1 }
+    self._DisplayCaseUpdated:FireClient(plr, userId, p.display)
 end
 
 return DisplayCaseService

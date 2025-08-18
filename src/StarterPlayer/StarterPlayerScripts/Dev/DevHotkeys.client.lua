@@ -30,22 +30,59 @@ local function countKeys(t) local n=0; for _ in pairs(t) do n+=1 end; return n e
 -- Local inventory cache { [itemId] = qty }
 local inventory = {}
 
--- Keep a copy of last crafted item id (if you later want a hotkey for it)
-local lastCraftedId = nil
+local function safeName(x)
+    if typeof(x) == "Instance" then return x.Name end
+    if type(x) == "table" then return x.id or x.itemId or x.name or "table" end
+    return tostring(x)
+end
 
--- Listen for server-driven inventory state
 InventorySnapshot.OnClientEvent:Connect(function(full)
-    inventory = full or {}
-    printf("[DevHotkeys] Snapshot received; items=%d", countKeys(inventory))
+    -- server may send a dict or an array of {id, qty}; support both
+    local out = {}
+    if type(full) == "table" then
+        local looksArray = (#full > 0)
+        if looksArray then
+            for _, row in ipairs(full) do
+                local id = (type(row) == "table") and (row.id or row.itemId or row.name) or row
+                local q  = (type(row) == "table") and (row.qty or row.quantity or row.q or row.amount) or 1
+                if id then out[id] = tonumber(q) or 1 end
+            end
+        else
+            -- assume { [id]=qty }
+            for k,v in pairs(full) do
+                out[tostring(k)] = tonumber(v) or 0
+            end
+        end
+    end
+    inventory = out
+    print(("[DevHotkeys] Snapshot items=%d"):format((function(t)local n=0;for _ in pairs(t) do n+=1 end;return n end)(inventory)))
 end)
 
-InventoryUpdated.OnClientEvent:Connect(function(itemId, _delta, newQty)
-    if newQty and newQty > 0 then
-        inventory[itemId] = newQty
+InventoryUpdated.OnClientEvent:Connect(function(a, b, c)
+    -- Accept either (itemId, delta, newQty) or ({id, qty}) or ({id, delta, newQty})
+    local id, newQty
+
+    if type(a) == "table" then
+        id     = a.id or a.itemId or a.name
+        newQty = a.newQty or a.qty or a.quantity or c  -- some servers send delta/newQty separate
     else
-        inventory[itemId] = nil
+        id     = a
+        newQty = c or b  -- accept either (id, delta, newQty) or (id, newQty)
     end
-    printf("[DevHotkeys] Updated %s -> %s", itemId, tostring(inventory[itemId]))
+
+    id = id and tostring(id) or nil
+    newQty = tonumber(newQty)
+
+    if id then
+        if newQty and newQty > 0 then
+            inventory[id] = newQty
+        else
+            inventory[id] = nil
+        end
+        print(("[DevHotkeys] Inventory %s -> %s"):format(id, tostring(inventory[id])))
+    else
+        warn("[DevHotkeys] InventoryUpdated: missing id; payload types:", type(a), type(b), type(c))
+    end
 end)
 
 -- Picking logic: first item you own
