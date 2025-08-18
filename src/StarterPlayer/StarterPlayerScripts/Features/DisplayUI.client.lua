@@ -1,6 +1,6 @@
 --!strict
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 
 local okTheme, Theme = pcall(function() return require(ReplicatedStorage.UI.Theme) end)
@@ -11,44 +11,26 @@ local okTpl, DisplayTpl = pcall(function()
 end)
 if not okTpl then warn("[DisplayUI] Template missing") return end
 
+local RenderSlots = require(ReplicatedStorage.UI.Render.RenderSlots)
+
+-- Build / mount UI
 local screen, refs = DisplayTpl.build(Theme)
 screen.Enabled = false
 screen.Parent = player:WaitForChild("PlayerGui")
 
-local function renderSlots(slots: { [number]: any })
-    -- clear old (keep layout + EmptyLabel)
-    for _, c in ipairs(refs.SlotsGrid:GetChildren()) do
-        if not c:IsA("UIGridLayout") and c.Name ~= "EmptyLabel" then c:Destroy() end
-    end
+-- State
+local selectedSlotId: number? = nil
 
-    local count = 0
-    for slotId, slot in pairs(slots) do
-        count += 1
-        local card = Instance.new("Frame")
-        card.Name = ("Slot_%s"):format(slotId)
-        card.Size = UDim2.fromOffset(140, 100)
-        card.BackgroundColor3 = Theme.panel
-        card.BorderSizePixel = 0
-
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 8)
-        corner.Parent = card
-
-        local name = Instance.new("TextLabel")
-        name.BackgroundTransparency = 1
-        name.Text = tostring(slot.itemId) .. " x" .. tostring(slot.qty)
-        name.Font = Enum.Font.Gotham
-        name.TextSize = 14
-        name.TextColor3 = Theme.text
-        name.Size = UDim2.new(1, -10, 0, 20)
-        name.Position = UDim2.new(0, 5, 0, 5)
-        name.TextXAlignment = Enum.TextXAlignment.Left
-        name.Parent = card
-
-        card.Parent = refs.SlotsGrid
-    end
-
-    refs.EmptyLabel.Visible = (count == 0)
+-- Update handling
+local function onDisplayUpdate(userId: number, display: { slots: { [number]: any } })
+    RenderSlots.render(Theme, refs.SlotsGrid, display.slots, {
+        selectedId = selectedSlotId,
+        onSelect = function(id, slot)
+            selectedSlotId = id
+            -- enable buttons when something is selected
+            if refs.TakeButton then refs.TakeButton.AutoButtonColor = true end
+        end,
+    })
 end
 
 -- Connect to toggle events and handle updates
@@ -59,6 +41,12 @@ if displayUpdated then
             warn("[DisplayUI] Bad payload from DisplayCaseUpdated")
             return
         end
-        renderSlots(snapshot.slots or {})
+        onDisplayUpdate(userId, snapshot)
     end)
 end
+
+-- Example: take button
+refs.TakeButton.Activated:Connect(function()
+    if not selectedSlotId then return end
+    -- e.g. Remotes.DisplayCaseRequest:FireServer("TakeFromDisplay", selectedSlotId, 1)
+end)
