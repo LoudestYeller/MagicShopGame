@@ -6,29 +6,29 @@ local RunService = game:GetService("RunService")
 if not RunService:IsStudio() then return end
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
+local UIS = game:GetService("UserInputService")
 
-local Networking = ReplicatedStorage:WaitForChild("Networking")
-local Remotes = {
-    DisplayCaseRequest = Networking:WaitForChild("DisplayCaseRequest"),
-    InventorySnapshot  = Networking:WaitForChild("InventorySnapshot"),
-    InventoryUpdated   = Networking:WaitForChild("InventoryUpdated"),
-    Dev_Grant = Networking:WaitForChild("Dev_Grant"),
-    Dev_NPCBuy = Networking:WaitForChild("Dev_NPCBuy"),
-    Dev_Give = Networking:WaitForChild("DevGive")
-}
+local Networking = ReplicatedStorage:FindFirstChild("Networking") or ReplicatedStorage
+local DisplayCaseRequest = Networking:WaitForChild("DisplayCaseRequest")
+local InventorySnapshot = Networking:WaitForChild("InventorySnapshot")
+local InventoryUpdated = Networking:WaitForChild("InventoryUpdated")
 
--- keep a local copy of the player's inventory
+local function countKeys(t) local n=0; for _ in pairs(t) do n+=1 end; return n end
+
 local inventory = {}
 
-Remotes.InventorySnapshot.OnClientEvent:Connect(function(full)
-    -- full is a map like {["Glowing Mushroom"]=1, ...}
+InventorySnapshot.OnClientEvent:Connect(function(full)
     inventory = full or {}
+    print(("[DevHotkeys] Snapshot received; items=%d"):format(countKeys(inventory)))
 end)
 
-Remotes.InventoryUpdated.OnClientEvent:Connect(function(itemId, _delta, newQty)
-    inventory[itemId] = newQty
-    if newQty == 0 then inventory[itemId] = nil end
+InventoryUpdated.OnClientEvent:Connect(function(itemId, _delta, newQty)
+    if newQty and newQty > 0 then
+        inventory[itemId] = newQty
+    else
+        inventory[itemId] = nil
+    end
+    print(("[DevHotkeys] Updated %s -> %s"):format(itemId, tostring(inventory[itemId])))
 end)
 
 local function pickFirstOwnedItem()
@@ -46,8 +46,8 @@ local function placeOneOnDisplay()
         return
     end
     local price = 10
-    print(("[DevHotkeys] Placing %s x%d for %d"):format(itemId, qty, price))
-    Remotes.DisplayCaseRequest:FireServer("PutOnDisplay", itemId, qty, price)
+    print(("[DevHotkeys] Placing %s x%d @%d"):format(itemId, qty, price))
+    DisplayCaseRequest:FireServer("PutOnDisplay", itemId, qty, price)
 end
 
 print("[DevHotkeys] Registering dev keys:")
