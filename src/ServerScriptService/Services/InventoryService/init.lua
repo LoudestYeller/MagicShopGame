@@ -1,46 +1,79 @@
---!strict
-local SSS = game:GetService("ServerScriptService")
-local Services = SSS:WaitForChild("Services")
-local DataServiceModule = Services:WaitForChild("DataService")
-local DataService = require(DataServiceModule:IsA("ModuleScript") and DataServiceModule or DataServiceModule:WaitForChild("init"))
+-- ServerScriptService/Services/InventoryService.lua
+-- v1.2 — accepts Player/Character, dict or string adds; binds InventorySnapshot and logs binding
+local RS      = game:GetService("ReplicatedStorage")
+local SSS     = game:GetService("ServerScriptService")
+local Players = game:GetService("Players")
 
-local InventoryService = {}
+local Networking  = RS:WaitForChild("Networking")
+local DataService = require(SSS.Services:WaitForChild("DataService"))
 
--- Module-level service references
-local TutorialService = nil
+local InventoryService = { Name = "InventoryService" }
 
--- Optional lifecycle for ServiceLoader (safe no-ops)
-function InventoryService.Init(self, ctx) 
-    self._ctx = ctx
-    if ctx and ctx.GetService then
-        TutorialService = ctx:GetService("TutorialService")
+function InventoryService:Init()
+    self._evUpdated  = Networking:WaitForChild("InventoryUpdated")   :: RemoteEvent
+    self._fnSnapshot = Networking:WaitForChild("InventorySnapshot")  :: RemoteFunction
+    self._evDevGive  = Networking:FindFirstChild("DevGive")          :: RemoteEvent?
+end
+
+-- Normalize Player/Character/descendant -> Player
+local function toPlayer(x: Instance?)
+    if not x then return nil end
+    if x:IsA("Player") then return x end
+    local model = x:FindFirstAncestorOfClass("Model") or x
+    return Players:GetPlayerFromCharacter(model)
+end
+
+function InventoryService:_inv(playerLike: Instance)
+    local plr = toPlayer(playerLike)
+    assert(plr, "InventoryService:_inv expects Player/Character")
+    local prof = DataService:GetProfile(plr)
+    prof.inv = prof.inv or {}
+    return prof.inv, plr
+end
+
+local function cloneDict(t: table?)
+    local out = {}
+    for k, v in pairs(t or {}) do out[k] = v end
+    return out
+end
+
+-- Accept (player, dict) or (player, itemId, qty)
+function InventoryService:Add(playerLike: Instance, itemOrDict: any, qty: number?)
+    if type(itemOrDict) == "table" and qty == nil then
+        for id, q in pairs(itemOrDict) do
+            self:Add(playerLike, id, q)
+        end
+        return
     end
-end
-function InventoryService.Start(self) end
+    assert(type(itemOrDict) == "string" and itemOrDict ~= "", "Add expects itemId")
+    local amount = tonumber(qty) or 1
 
-local function addItem(player: Player, itemId: string, qty: number)
-    assert(player and player:IsA("Player"), "player must be a Player")
-    assert(type(itemId) == "string", "itemId must be a string")
-    qty = math.max(1, qty or 1)
-    -- ✅ correct order
-    DataService:AddItem(player, itemId, qty)
+    local inv, plr = self:_inv(playerLike)
+    inv[itemOrDict] = (inv[itemOrDict] or 0) + amount
+    self._evUpdated:FireClient(plr, cloneDict(inv))
 end
 
-function InventoryService.Add(player: Player, itemId: string, qty: number)
-    addItem(player, itemId, qty)
-    -- Track tutorial progress (gathering)
-    if TutorialService then
-        TutorialService:TrackGather(player)
+function InventoryService:Snapshot(playerLike: Instance)
+    local inv = select(1, self:_inv(playerLike))
+    return cloneDict(inv)
+end
+
+function InventoryService:Start()
+    local THIS = self
+    self._fnSnapshot.OnServerInvoke = function(player: Player)
+        return THIS:Snapshot(player)
     end
-end
+    print("[InventoryService] Snapshot bound ✔")
 
--- Helpers if you need them elsewhere
-function InventoryService:Get(player: Player)
-    return DataService:Get(player)
-end
-
-function InventoryService:Remove(player: Player, itemId: string, qty: number): boolean
-    return DataService:RemoveItem(player, itemId, qty)
+    if self._evDevGive then
+        self._evDevGive.OnServerEvent:Connect(function(player: Player, payload: any, qty: number?)
+            if type(payload) == "table" then
+                THIS:Add(player, payload)
+            elseif type(payload) == "string" then
+                THIS:Add(player, payload, qty or 1)
+            end
+        end)
+    end
 end
 
 return InventoryService

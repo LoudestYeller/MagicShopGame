@@ -55,15 +55,17 @@ function TutorialService:TrackStep(plr: Player, step: string)
     
     -- Send step completion feedback
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local Remotes = require(ReplicatedStorage.Networking.Remotes)
-    if Remotes.TutorialToast then
+    local Names = require(ReplicatedStorage.Shared.Net.Names)
+    local Net = require(ReplicatedStorage.Shared.Net.GetRemote)
+    local ok, CraftedToast = pcall(function() return Net.GetEvent(Names.Events.CraftedToast) end)
+    if ok and CraftedToast then
         local messages = {
             FirstGather = "✅ First gather complete! Try crafting next.",
             FirstCraft = "🔨 Great crafting! Now list an item for sale.",
             FirstStock = "📦 Item listed! Wait for NPC buyers.",
             FirstSale = "💰 First sale! You're getting the hang of it!"
         }
-        Remotes.TutorialToast:FireClient(plr, messages[step] or ("✅ %s complete!"):format(step))
+        CraftedToast:FireClient(plr, messages[step] or ("✅ %s complete!"):format(step))
     end
     
     -- Check if all steps complete
@@ -82,7 +84,7 @@ end
 
 function TutorialService:_setupRemotes()
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local Remotes = require(ReplicatedStorage.Networking.Remotes)
+    local Remotes = require(ReplicatedStorage.Modules.Remotes)
     -- Tutorial toasts handled via existing remotes for now
 end
 
@@ -107,9 +109,11 @@ function TutorialService:CompleteTutorial(plr: Player)
     
     -- Send completion toast to client
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local Remotes = require(ReplicatedStorage.Networking.Remotes)
-    if Remotes.TutorialToast then
-        Remotes.TutorialToast:FireClient(plr, "🎉 Tutorial Complete! +100 cash, bonus items!")
+    local Names = require(ReplicatedStorage.Shared.Net.Names)
+    local Net = require(ReplicatedStorage.Shared.Net.GetRemote)
+    local ok, CraftedToast = pcall(function() return Net.GetEvent(Names.Events.CraftedToast) end)
+    if ok and CraftedToast then
+        CraftedToast:FireClient(plr, "🎉 Tutorial Complete! +100 cash, bonus items!")
     end
     
     print(("[TutorialService] 🎉 %s completed tutorial! Awarded %d cash, %d items, %d recipes"):format(

@@ -6,7 +6,8 @@
       "$className": "ReplicatedStorage",
       "Shared": { "$path": "src/ReplicatedStorage/Shared" },
       "Networking": { "$path": "src/ReplicatedStorage/Networking" },
-      "Modules": { "$path": "src/ReplicatedStorage/Modules" }
+      "Modules": { "$path": "src/ReplicatedStorage/Modules" },
+      "UI": { "$path": "src/ReplicatedStorage/UI" }
     },
     "ServerScriptService": {
       "$className": "ServerScriptService",
@@ -16,6 +17,7 @@
       "Health": { "$path": "src/ServerScriptService/Health.server.lua" },
       "Cleanup": { "$path": "src/ServerScriptService/Cleanup.server.lua" },
       "Services": { "$path": "src/ServerScriptService/Services" },
+      "DevTools": { "$path": "src/ServerScriptService/DevTools" },
       "Templates": { "$path": "src/ServerScriptService/Templates" },
       "Tools": { "$path": "src/ServerScriptService/Tools" }
     },

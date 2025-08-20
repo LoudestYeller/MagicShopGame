@@ -3,31 +3,40 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 if not RunService:IsStudio() then return end
 
-local function getRemote(name, expectedClass) -- expectedClass: "RemoteEvent" or "RemoteFunction"
+local function getRemote(name, kind) -- kind = "Event" | "Function"
     local Networking = ReplicatedStorage:WaitForChild("Networking")
-    -- recursive search (handles nested folders)
-    local r = Networking:FindFirstChild(name, true)
-    if not r then
-        error(("[DevHotkeys] Remote '%s' not found under ReplicatedStorage.Networking"):format(name))
+    local obj = Networking:WaitForChild(name)
+    if kind == "Event" then
+        assert(obj:IsA("RemoteEvent"), string.format("[DevHotkeys] Remote '%s' expected RemoteEvent but is %s", name, obj.ClassName))
+    elseif kind == "Function" then
+        assert(obj:IsA("RemoteFunction"), string.format("[DevHotkeys] Remote '%s' expected RemoteFunction but is %s", name, obj.ClassName))
+    else
+        error(("Unknown remote kind '%s'"):format(tostring(kind)))
     end
-    if expectedClass and not r:IsA(expectedClass) then
-        error(("[DevHotkeys] Remote '%s' expected %s but is %s"):format(name, expectedClass, r.ClassName))
-    end
-    return r
+    return obj
 end
 
 -- ✨ Use it for every remote you wire up:
-local InventorySnapshot = getRemote("InventorySnapshot", "RemoteEvent")
-local InventoryUpdated  = getRemote("InventoryUpdated",  "RemoteEvent")
-local DisplayCaseRequest = getRemote("DisplayCaseRequest", "RemoteEvent")
-local DevGive           = getRemote("DevGive", "RemoteEvent")
+local InventorySnapshot = getRemote("InventorySnapshot", "Function")
+local InventoryUpdated  = getRemote("InventoryUpdated",  "Event")
+local DisplayCaseRequest = getRemote("DisplayCaseRequest", "Function")
+local DevGive           = getRemote("DevGive", "Event")
 
 -- inventory cache
 local inventory = {}
 
 local function count(t) local n=0; for _ in pairs(t) do n+=1 end; return n end
 
-InventorySnapshot.OnClientEvent:Connect(function(full)
+-- Function to fetch current inventory
+local function fetchInventory()
+    local ok, full = pcall(function()
+        return InventorySnapshot:InvokeServer()
+    end)
+    if not ok then
+        warn("[DevHotkeys] Failed to fetch inventory:", full)
+        return
+    end
+    
     local out = {}
     if type(full) == "table" then
         if #full > 0 then
@@ -46,7 +55,10 @@ InventorySnapshot.OnClientEvent:Connect(function(full)
     end
     inventory = out
     print(("[DevHotkeys] Snapshot items=%d"):format(count(inventory)))
-end)
+end
+
+-- Fetch initial inventory
+task.defer(fetchInventory)
 
 InventoryUpdated.OnClientEvent:Connect(function(a,b,c)
     -- Accept dict/array-of-pairs OR (id, delta, newQty) OR ({id=.., qty/newQty=..})
@@ -106,7 +118,9 @@ local function placeOneOnDisplay()
     end
     local price = 10
     print(("[DevHotkeys] Placing %s x%d @%d"):format(itemId, qty, price))
-    DisplayCaseRequest:FireServer("PutOnDisplay", itemId, qty, price)
+    -- Example snapshot usage:
+    local snapshot = DisplayCaseRequest:InvokeServer()
+    -- (Use snapshot as needed in your hotkeys/tests)
 end
 
 -- Hotkeys
