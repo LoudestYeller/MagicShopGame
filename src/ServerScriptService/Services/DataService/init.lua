@@ -10,16 +10,25 @@ function DataService:Init()
 end
 
 function DataService:GetProfile(player: Player)
-    assert(player and player.UserId, "DataService:GetProfile requires Player")
+    if not player or not player.UserId or player.UserId <= 0 then
+        error(("DataService:GetProfile requires valid Player, got %s"):format(tostring(player)))
+    end
+    
     local prof = self._profiles[player.UserId]
     if not prof then
         prof = { cash = 0, inv = {}, flags = { tutorial = { seen = false } } }
         self._profiles[player.UserId] = prof
     end
-    -- soft repair
-    prof.cash  = tonumber(prof.cash) or 0
-    prof.inv   = type(prof.inv) == "table" and prof.inv or {}
-    prof.flags = type(prof.flags) == "table" and prof.flags or { tutorial = { seen = false } }
+    
+    -- Robust data repair with type safety
+    if type(prof.cash) ~= "number" then prof.cash = 0 end
+    if type(prof.inv) ~= "table" then prof.inv = {} end
+    if type(prof.flags) ~= "table" then 
+        prof.flags = { tutorial = { seen = false } }
+    elseif type(prof.flags.tutorial) ~= "table" then
+        prof.flags.tutorial = { seen = false }
+    end
+    
     return prof
 end
 

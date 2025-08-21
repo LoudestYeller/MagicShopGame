@@ -1,6 +1,6 @@
 local SSS = game:GetService("ServerScriptService")
 local Players = game:GetService("Players")
-local InventoryService = require(SSS.Services:WaitForChild("InventoryService"))
+local InventoryService = require(SSS.Services.InventoryService.init)
 
 local function canonicalId(model)
   local a = model:GetAttribute("ItemId"); if a and a ~= "" then return a end

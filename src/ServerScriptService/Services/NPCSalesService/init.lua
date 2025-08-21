@@ -1,9 +1,9 @@
 local RS  = game:GetService("ReplicatedStorage")
 local SSS = game:GetService("ServerScriptService")
 
-local DataService        = require(SSS.Services:WaitForChild("DataService"))
-local InventoryService   = require(SSS.Services:WaitForChild("InventoryService"))
-local DisplayCaseService = require(SSS.Services:WaitForChild("DisplayCaseService"))
+local DataService        = require(SSS.Services.DataService.init)
+local InventoryService   = require(SSS.Services.InventoryService.init)
+local DisplayCaseService = require(SSS.Services.DisplayCaseService.init)
 local Networking         = RS:WaitForChild("Networking")
 local Guard              = require(SSS.Lib.Guard)
 

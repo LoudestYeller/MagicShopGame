@@ -1,21 +1,18 @@
+*** Begin File
+-- Canonical networking manifest used by RemotesService and clients.
+-- Do not add/remove without updating both ends.
 return {
-    Events = {
-        "CashUpdated",
-        "InventoryUpdated",
-        "InventorySnapshot",
-        "CraftedToast",
-
-        "DisplayCaseUpdated",
-
-        "ToggleCrafting",
-        "CraftingState",
-
-        "TutorialToast",
-    },
-
-    Functions = {
-        "RequestCraft",
-        "GetDailyTrends",
-        "DisplayCaseRequest", -- moved here
-    }
+Events = {
+"InventoryUpdated",
+"ToggleCrafting",
+"CraftingState",
+"DisplayCaseUpdated",
+"DevGive",
+},
+Functions = {
+"InventorySnapshot",
+"DisplayCaseRequest",
+"RequestCraft",
+},
 }
+*** End File

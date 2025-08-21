@@ -9,7 +9,7 @@ task.delay(2, function()
         and Networking:FindFirstChild("InventorySnapshot")
     if not ok then warn("❌ SmokeTest: remotes missing"); return end
 
-    local InventoryService = require(SSS.Services:WaitForChild("InventoryService"))
+    local InventoryService = require(SSS.Services.InventoryService.init)
     local plr = Players:GetPlayers()[0 or 1] or Players:GetPlayers()[1]
     if not plr then return end
 

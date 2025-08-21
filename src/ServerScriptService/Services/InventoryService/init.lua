@@ -5,7 +5,7 @@ local SSS     = game:GetService("ServerScriptService")
 local Players = game:GetService("Players")
 
 local Networking  = RS:WaitForChild("Networking")
-local DataService = require(SSS.Services:WaitForChild("DataService"))
+local DataService = require(SSS.Services.DataService.init)
 
 local InventoryService = { Name = "InventoryService" }
 
@@ -25,7 +25,11 @@ end
 
 function InventoryService:_inv(playerLike: Instance)
     local plr = toPlayer(playerLike)
-    assert(plr, "InventoryService:_inv expects Player/Character")
+    if not plr then
+        local typ = typeof(playerLike)
+        local name = (typ == "Instance" and playerLike.Name) or "unknown"
+        error(("InventoryService:_inv expects Player/Character, got %s (%s)"):format(typ, name))
+    end
     local prof = DataService:GetProfile(plr)
     prof.inv = prof.inv or {}
     return prof.inv, plr

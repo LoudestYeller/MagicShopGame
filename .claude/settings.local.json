@@ -21,7 +21,8 @@
       "Bash(gh pr create:*)",
       "Bash(git fetch:*)",
       "Bash(C:ToolsRojorojo.exe serve)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(git reset:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"
