@@ -5,8 +5,26 @@
       "Bash(mkdir:*)",
       "Bash(rojo serve:*)",
       "Bash(rojo:*)",
-      "Bash(where rojo)"
+      "Bash(where rojo)",
+      "Bash(tree:*)",
+      "Bash(C:ToolsRojorojo.exe serve --port 34872)",
+      "Bash(\"C:\\Tools\\Rojo\\rojo.exe\" serve --port 34872)",
+      "Bash(curl:*)",
+      "Bash(lua:*)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "Bash(powershell:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git rm:*)",
+      "Bash(git checkout:*)",
+      "Bash(gh pr create:*)",
+      "Bash(git fetch:*)",
+      "Bash(C:ToolsRojorojo.exe serve)",
+      "Bash(mv:*)",
+      "Bash(git reset:*)"
     ],
-    "deny": []
+    "deny": [],
+    "defaultMode": "acceptEdits"
   }
 }

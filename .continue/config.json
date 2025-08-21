@@ -1,0 +1,17 @@
+{
+  "models": [
+    {
+      "title": "ChatGPT-mini",
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "apiKey": "${env:OPENAI_API_KEY}"
+    }
+  ],
+  "chatModel": "ChatGPT-mini",
+  "editModel": "ChatGPT-mini",
+  "embeddings": {
+    "provider": "openai",
+    "model": "text-embedding-3-small",
+    "apiKey": "${env:OPENAI_API_KEY}"
+  }
+}

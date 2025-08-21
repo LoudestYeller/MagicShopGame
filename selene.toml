@@ -1,0 +1,20 @@
+std = "roblox"
+
+[rules]
+global_usage = "allow"
+multiple_statements = "allow"
+shadowing = "allow"
+unused_variable = "warn"
+
+[config]
+empty_if = { comments_count = true }
+
+[lints]
+# Roblox Instance/enum access
+undefined_variable = { level = "allow" }
+
+# Common Roblox globals
+global_usage = { level = "allow" }
+
+# Our services can use game:GetService
+playground = { level = "allow" }

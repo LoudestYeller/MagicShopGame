@@ -1,0 +1,11 @@
+{
+  "className": "ScreenGui",
+  "properties": {
+    "ResetOnSpawn": false,
+    "IgnoreGuiInset": true,
+    "ZIndexBehavior": "Sibling",
+    "DisplayOrder": 11,
+    "Enabled": false,
+    "Name": "CraftingUI"
+  }
+}

@@ -4,27 +4,40 @@ task.wait(0.5) -- Give ServerMain time to complete
 local RS = game:GetService("ReplicatedStorage")
 local SSS = game:GetService("ServerScriptService")
 
--- Wait for RemotesService to finish creating all remotes
-local networking = RS:WaitForChild("Networking")
-local remotesFolder = networking:WaitForChild("Remotes")
+-- Use Remotes helper
+local Remotes = require(RS.Modules.Remotes)
 
 -- Count services and actual RemoteEvents
 local servicesCount = #SSS.Services:GetChildren()
 local remotesCount = 0
-for _, child in ipairs(remotesFolder:GetChildren()) do
+for _, child in ipairs(RS.Networking:GetChildren()) do
     if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
         remotesCount = remotesCount + 1
     end
 end
 
--- Check for duplicate services (safety net)
-local services = SSS:WaitForChild("Services")
-local seen = {}
-for _,child in ipairs(services:GetChildren()) do
-    if seen[child.Name] then
-        warn("⚠️  Duplicate service:", child.Name, child:GetFullName(), "and", seen[child.Name]:GetFullName())
-    else
-        seen[child.Name] = child
+-- Collect services by name and print full paths for duplicates
+local ServicesRoot = game:GetService("ServerScriptService"):WaitForChild("Services")
+local byName: {[string]: {Instance}} = {}
+
+for _, inst in ServicesRoot:GetDescendants() do
+    if inst:IsA("ModuleScript") then
+        local t = byName[inst.Name]
+        if not t then
+            t = {}
+            byName[inst.Name] = t
+        end
+        table.insert(t, inst)
+    end
+end
+
+for name, list in pairs(byName) do
+    if #list > 1 then
+        -- Print all dupes with absolute paths
+        warn(("⚠️  Duplicate service '%s' (%d copies):"):format(name, #list))
+        for i, inst in ipairs(list) do
+            warn(("    %d) %s"):format(i, inst:GetFullName()))
+        end
     end
 end
 

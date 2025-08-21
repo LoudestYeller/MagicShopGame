@@ -1,0 +1,28 @@
+{
+    "editor.formatOnSave": true,
+    "stylua.enable": true,
+    "stylua.args": ["--config-path", "stylua.toml"],
+    "selene.enable": true,
+    "files.associations": {
+        "*.lua": "lua"
+    },
+    "[lua]": {
+        "editor.defaultFormatter": "JohnnyMorganz.stylua"
+    },
+    "robloxLsp.diagnostics.globals": [
+        "game",
+        "workspace",
+        "script",
+        "wait",
+        "task",
+        "spawn"
+    ],
+    "robloxLsp.workspace.maxPreload": 5000,
+    "robloxLsp.completion.callParentheses": true,
+    "robloxLsp.completion.endAutocompletion": true,
+    "robloxLsp.hint.semicolon": "Disable",
+    "robloxLsp.diagnostics.disable": [
+        "undefined-global",
+        "lowercase-global"
+    ]
+}

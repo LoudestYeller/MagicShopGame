@@ -1,0 +1,6 @@
+{
+  "editor.formatOnSave": true,
+  "stylua.enable": true,
+  "selene.enable": true,
+  "files.trimFinalNewlines": true
+}
